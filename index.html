@@ -1,0 +1,1582 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f6b3a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Carte champignons</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#f6f5f1;--panel:#fff;--ink:#1f2420;--quiet:#5f665f;--line:#d9dbd4;--accent:#2f6b3a;--warn:#a8551b;--bad:#a12a2a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
+#app{display:flex;height:100%}
+#side{width:370px;min-width:370px;overflow-y:auto;background:var(--panel);border-right:1px solid var(--line);padding:16px}
+#map{flex:1}
+h1{font-size:18px;margin:0 0 2px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--quiet);margin:20px 0 8px}
+.sub{color:var(--quiet);font-size:12.5px;margin:0 0 8px}
+button{font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.5;cursor:default}
+select,input[type=text]{font:inherit;padding:6px;border:1px solid var(--line);border-radius:6px;width:100%}
+label{display:block;margin:6px 0 2px;color:var(--quiet);font-size:12.5px}
+#status{font-size:12.5px;background:var(--bg);border-radius:6px;padding:8px 10px;margin:10px 0;white-space:pre-wrap}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}
+.bar>div{height:100%;background:var(--accent);width:0}
+.legend{display:flex;gap:4px;align-items:center;font-size:12px;color:var(--quiet);flex-wrap:wrap}
+.sw{display:inline-block;width:18px;height:12px;border-radius:2px;vertical-align:middle;margin-right:3px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+td,th{border-bottom:1px solid var(--line);padding:3px 4px;text-align:left;vertical-align:top}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:11px;word-break:break-all}
+.ok{color:var(--accent)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center}
+.note{font-size:12px;color:var(--quiet)}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;flex:1;padding:6px 8px}
+.seg button.on{background:var(--accent);color:#fff}
+.chk{display:flex;gap:6px;align-items:center;margin:3px 0;color:var(--ink);font-size:13px}
+.chk input{margin:0}
+#timeline{width:100%;height:130px;display:block;border:1px solid var(--line);border-radius:6px;background:#fff}
+.pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:12px;background:var(--bg)}
+.leaflet-popup-content{font-size:12.5px;min-width:260px;max-height:420px;overflow:auto}
+.leaflet-popup-content table td{padding:2px 4px}
+#temoins li{margin:4px 0;font-size:12.5px}
+details summary{cursor:pointer;color:var(--quiet);font-size:12.5px}
+@media (max-width:800px){#app{flex-direction:column}#side{width:100%;min-width:0;max-height:48%;border-right:0;border-bottom:1px solid var(--line)}body.mapOnly #side{display:none}button{min-height:40px}}
+.mapbtn{background:#fff;border:2px solid rgba(0,0,0,.25);border-radius:6px;width:44px;height:44px;font-size:20px;line-height:1;padding:0;cursor:pointer}
+.mapbtn.on{background:var(--accent);color:#fff}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="side">
+  <h1>Carte champignons</h1>
+  <p class="sub">15 km autour de <b id="zoneName"></b>. Version <span id="ver"></span>.</p>
+  <div class="row"><select id="zoneSel" style="flex:1"></select><button id="btnZoneHere" title="Clique ensuite sur la carte">Nouvelle zone…</button></div>
+
+  <div id="status">Ouverture…</div>
+  <div class="bar"><div id="prog"></div></div>
+  <div class="row">
+    <button id="btnPrepare" class="primary" disabled>Préparer la carte</button>
+    <button id="btnMeteo" disabled>Mettre à jour la météo</button>
+    <button id="btnRecalc" disabled>Recalculer</button>
+  </div>
+
+  <h2>Affichage</h2>
+  <div class="seg" id="modeSeg">
+    <button data-mode="pousse" class="on">Pousse à la date</button>
+    <button data-mode="habitat">Habitat seul</button>
+  </div>
+  <label for="layer">Espèce ou donnée</label>
+  <select id="layer" disabled></select>
+  <div id="dateBox">
+    <label for="dateSlider">Date : <b id="dateLabel">—</b></label>
+    <input id="dateSlider" type="range" min="0" max="0" step="1" value="0" style="width:100%" disabled>
+  </div>
+  <label for="opacity">Opacité</label>
+  <input id="opacity" type="range" min="0.1" max="1" step="0.05" value="0.7" style="width:100%">
+  <div id="legend" class="legend" style="margin-top:8px"></div>
+  <p class="note" id="layerNote"></p>
+
+  <h2>Superpositions</h2>
+  <label class="chk"><input type="checkbox" id="ovBasins"> Limites des bassins versants</label>
+  <label class="chk"><input type="checkbox" id="ovStreams" checked> Cours d’eau et plans d’eau</label>
+  <label class="chk"><input type="checkbox" id="ovPublic"> Forêts publiques</label>
+  <label class="chk"><input type="checkbox" id="ovGbif" checked> Observations publiques (GBIF)</label>
+
+  <h2>Conditions de pousse</h2>
+  <canvas id="timeline" width="680" height="260"></canvas>
+  <div id="condText" class="note" style="margin-top:6px">Météo non chargée.</div>
+
+  <h2>Coins témoins</h2>
+  <p class="note">Note chaque sortie, avec ou sans cèpes : c’est ce qui permet de vérifier le modèle chez toi.</p>
+  <div class="row">
+    <button id="btnAddTemoin" disabled>Ajouter un coin</button>
+    <button id="btnExport">Exporter la sauvegarde</button>
+    <button id="btnImport" type="button">Importer</button>
+    <input id="fileImport" type="file" accept="application/json" style="display:none">
+  </div>
+  <div id="temoinForm" style="display:none;margin-top:8px">
+    <p class="note">Clique sur la carte à l’emplacement du coin, ou utilise ta position GPS.</p>
+    <label for="tSpecies">Espèce</label><select id="tSpecies"></select>
+    <label for="tResult">Résultat</label><select id="tResult" style="font:inherit;padding:6px;border:1px solid var(--line);border-radius:6px;width:100%"><option value="found">trouvé</option><option value="none">cherché, rien trouvé</option></select>
+    <label for="tDate">Date de la sortie</label><input id="tDate" type="date" style="font:inherit;padding:6px;border:1px solid var(--line);border-radius:6px;width:100%">
+    <label for="tNote">Note (facultatif)</label><input id="tNote" type="text" maxlength="200">
+    <div class="row"><button id="btnTemoinHere" class="primary">À ma position GPS</button><button id="btnCancelTemoin">Annuler</button></div>
+    <p class="note" id="hereNote"></p>
+  </div>
+  <ul id="temoins" style="padding-left:18px"></ul>
+  <p class="note" id="temoinSummary"></p>
+  <div class="note" id="validation"></div>
+
+  <h2>Sources et intégrité</h2>
+  <div id="sources" class="note">Aucune donnée chargée.</div>
+
+  <h2>Méthode</h2>
+  <div id="methode" class="note"></div>
+</div>
+<div id="map"></div>
+</div>
+
+<script id="worker-src" type="text/plain">
+'use strict';
+// =============== Calculs lourds, hors du fil principal ===============
+var R = 6378137;
+function post(type, data, transfer){ self.postMessage(Object.assign({type: type}, data || {}), transfer || []); }
+function progress(step, frac){ post('progress', {step: step, frac: frac}); }
+
+function firstCoord(geom){ var c = geom.coordinates; while (Array.isArray(c[0])) c = c[0]; return c; }
+function detectSwap(c){ return Math.abs(c[0]) > Math.abs(c[1]); } // en EPSG:3857 ici : |x| ~ 2e5 < |y| ~ 5,8e6
+
+function rasterizePolygons(features, grid, out, valueOf){
+  var N = grid.N, px = grid.px, x0 = grid.x0, y1 = grid.y1, swap = null, buf = new Float64Array(4096);
+  for (var fi = 0; fi < features.length; fi++){
+    var f = features[fi], g = f.geometry; if (!g) continue;
+    if (swap === null) swap = detectSwap(firstCoord(g));
+    var polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+    var val = valueOf(f, fi); if (val === null || val === undefined) continue;
+    for (var p = 0; p < polys.length; p++){
+      var rings = polys[p], prs = [], minY = Infinity, maxY = -Infinity;
+      for (var q = 0; q < rings.length; q++){
+        var ring = rings[q], a = new Float64Array(ring.length * 2);
+        for (var k = 0; k < ring.length; k++){
+          var X = swap ? ring[k][1] : ring[k][0], Y = swap ? ring[k][0] : ring[k][1];
+          a[2*k] = (X - x0) / px; a[2*k+1] = (y1 - Y) / px;
+          if (a[2*k+1] < minY) minY = a[2*k+1]; if (a[2*k+1] > maxY) maxY = a[2*k+1];
+        }
+        prs.push(a);
+      }
+      var r0 = Math.max(0, Math.floor(minY)), r1 = Math.min(N - 1, Math.ceil(maxY));
+      for (var r = r0; r <= r1; r++){
+        var yc = r + 0.5, n = 0;
+        for (var s = 0; s < prs.length; s++){
+          var A = prs[s], m = A.length / 2;
+          for (var k2 = 0; k2 < m; k2++){
+            var kn = (k2 + 1) % m, ya = A[2*k2+1], yb = A[2*kn+1];
+            if ((ya <= yc && yb > yc) || (yb <= yc && ya > yc)){
+              if (n >= buf.length){ var nb = new Float64Array(buf.length * 2); nb.set(buf); buf = nb; }
+              buf[n++] = A[2*k2] + (yc - ya) * (A[2*kn] - A[2*k2]) / (yb - ya);
+            }
+          }
+        }
+        if (n < 2) continue;
+        var srt = Array.prototype.slice.call(buf.subarray(0, n)).sort(function(u, v){ return u - v; });
+        for (var e = 0; e + 1 < n; e += 2){
+          var c0 = Math.max(0, Math.ceil(srt[e] - 0.5)), c1 = Math.min(N - 1, Math.floor(srt[e+1] - 0.5));
+          for (var c = c0; c <= c1; c++) out[r * N + c] = val;
+        }
+      }
+    }
+  }
+}
+
+function rasterizeLines(features, grid, out, valueOf){
+  var N = grid.N, px = grid.px, x0 = grid.x0, y1 = grid.y1, swap = null;
+  for (var fi = 0; fi < features.length; fi++){
+    var f = features[fi], g = f.geometry; if (!g) continue;
+    if (swap === null) swap = detectSwap(firstCoord(g));
+    var val = valueOf(f); if (!val) continue;
+    var lines = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+    for (var l = 0; l < lines.length; l++){
+      var L = lines[l];
+      for (var k = 0; k + 1 < L.length; k++){
+        var xa = ((swap ? L[k][1] : L[k][0]) - x0) / px, ya = (y1 - (swap ? L[k][0] : L[k][1])) / px;
+        var xb = ((swap ? L[k+1][1] : L[k+1][0]) - x0) / px, yb = (y1 - (swap ? L[k+1][0] : L[k+1][1])) / px;
+        var steps = Math.ceil(Math.max(Math.abs(xb - xa), Math.abs(yb - ya)) * 2) + 1;
+        for (var s = 0; s <= steps; s++){
+          var t = s / steps, cx = Math.floor(xa + (xb - xa) * t), cy = Math.floor(ya + (yb - ya) * t);
+          if (cx >= 0 && cy >= 0 && cx < N && cy < N) out[cy * N + cx] = val;
+        }
+      }
+    }
+  }
+}
+
+// Distance (chanfrein 3-4) aux cellules marquées, en dizaines de mètres, plafonnée à 255 (2 550 m)
+function distance10(mask, N, groundRes){
+  var NN = N * N, INF = 65535, d = new Uint16Array(NN), r, c, i, v;
+  for (i = 0; i < NN; i++) d[i] = mask[i] ? 0 : INF;
+  for (r = 0; r < N; r++) for (c = 0; c < N; c++){ i = r * N + c; v = d[i];
+    if (c > 0 && d[i-1] + 3 < v) v = d[i-1] + 3;
+    if (r > 0){ if (d[i-N] + 3 < v) v = d[i-N] + 3; if (c > 0 && d[i-N-1] + 4 < v) v = d[i-N-1] + 4; if (c < N-1 && d[i-N+1] + 4 < v) v = d[i-N+1] + 4; }
+    d[i] = v > INF ? INF : v; }
+  for (r = N - 1; r >= 0; r--) for (c = N - 1; c >= 0; c--){ i = r * N + c; v = d[i];
+    if (c < N-1 && d[i+1] + 3 < v) v = d[i+1] + 3;
+    if (r < N-1){ if (d[i+N] + 3 < v) v = d[i+N] + 3; if (c < N-1 && d[i+N+1] + 4 < v) v = d[i+N+1] + 4; if (c > 0 && d[i+N-1] + 4 < v) v = d[i+N-1] + 4; }
+    d[i] = v > INF ? INF : v; }
+  var out = new Uint8Array(NN);
+  for (i = 0; i < NN; i++){ var m = d[i] === INF ? 1e9 : d[i] / 3 * groundRes; out[i] = Math.min(255, Math.round(m / 10)); }
+  return out;
+}
+
+function boxMean(a, N, rad){
+  // moyenne dans une fenêtre carrée (2 rad + 1) par image intégrale, bords tronqués
+  var W = N + 1, I = new Float64Array(W * W), r, c;
+  for (r = 0; r < N; r++){ var run = 0; for (c = 0; c < N; c++){ run += a[r * N + c]; I[(r + 1) * W + c + 1] = I[r * W + c + 1] + run; } }
+  var out = new Float32Array(N * N);
+  for (r = 0; r < N; r++){ var ra = Math.max(0, r - rad), rb = Math.min(N, r + rad + 1);
+    for (c = 0; c < N; c++){ var ca = Math.max(0, c - rad), cb = Math.min(N, c + rad + 1);
+      var s = I[rb * W + cb] - I[ra * W + cb] - I[rb * W + ca] + I[ra * W + ca];
+      out[r * N + c] = s / ((rb - ra) * (cb - ca)); } }
+  return out;
+}
+
+var f32 = new Float32Array(1), u32 = new Uint32Array(f32.buffer);
+function nextUp(v){ f32[0] = v; if (v >= 0) u32[0] += 1; else u32[0] -= 1; return f32[0]; }
+
+function sunVectors(latDeg, doy){
+  // vecteurs soleil (est, nord, haut) toutes les 15 min, avec transmission atmosphérique simple (tau 0,7 : valeur supposée, affichage seulement)
+  var phi = latDeg * Math.PI / 180, dec = 23.44 * Math.PI / 180 * Math.sin(2 * Math.PI * (284 + doy) / 365), v = [];
+  for (var h = -Math.PI; h < Math.PI; h += Math.PI / 48){
+    var sx = -Math.cos(dec) * Math.sin(h), sy = Math.sin(dec) * Math.cos(phi) - Math.cos(dec) * Math.sin(phi) * Math.cos(h);
+    var sz = Math.sin(dec) * Math.sin(phi) + Math.cos(dec) * Math.cos(phi) * Math.cos(h);
+    if (sz <= 0.02) continue; var w = Math.pow(0.7, 1 / sz);
+    v.push(sx * w, sy * w, sz * w);
+  }
+  var flat = 0; for (var k = 2; k < v.length; k += 3) flat += v[k];
+  return {v: new Float64Array(v), flat: flat};
+}
+
+function computeTerrain(dem, grid, opts){
+  var N = grid.N, px = grid.px, y1 = grid.y1, NN = N * N, i, r, c, k;
+  var nod = new Uint8Array(NN), nodCount = 0;
+  for (i = 0; i < NN; i++) if (!(dem[i] > -1000 && dem[i] < 9000)) { nod[i] = 1; nodCount++; }
+  var ground = new Float64Array(N), latRow = new Float64Array(N);
+  for (r = 0; r < N; r++){ var yy = y1 - (r + 0.5) * px, lat = Math.atan(Math.sinh(yy / R)); latRow[r] = lat; ground[r] = px * Math.cos(lat); }
+  var L = latRow[N >> 1], cosL = Math.cos(L), sinL = Math.sin(L);
+  var suns = opts.sunDoys.map(function(d){ return sunVectors(L * 180 / Math.PI, d); });
+
+  // ---- Pente, exposition (Horn 1981), charge thermique (McCune et Keon 2002, éq. 1), ensoleillement direct potentiel ----
+  progress('Pente, exposition, ensoleillement', 0);
+  var slope8 = new Uint8Array(NN), aspect8 = new Uint8Array(NN), hli8 = new Uint8Array(NN), tanb = new Float32Array(NN);
+  var sun8 = suns.map(function(){ return new Uint8Array(NN); });
+  for (r = 0; r < N; r++){
+    var d = ground[r];
+    for (c = 0; c < N; c++){
+      i = r * N + c;
+      if (nod[i]) { slope8[i] = 255; aspect8[i] = 255; tanb[i] = NaN; continue; }
+      var rn = (r > 0 ? r - 1 : r) * N, rm = r * N, rs = (r < N - 1 ? r + 1 : r) * N, cw = c > 0 ? c - 1 : c, ce = c < N - 1 ? c + 1 : c, z = dem[i];
+      var a = nod[rn + cw] ? z : dem[rn + cw], b = nod[rn + c] ? z : dem[rn + c], cc = nod[rn + ce] ? z : dem[rn + ce];
+      var dd = nod[rm + cw] ? z : dem[rm + cw], ff = nod[rm + ce] ? z : dem[rm + ce];
+      var gg = nod[rs + cw] ? z : dem[rs + cw], hh = nod[rs + c] ? z : dem[rs + c], ii = nod[rs + ce] ? z : dem[rs + ce];
+      var dzE = ((cc + 2 * ff + ii) - (a + 2 * dd + gg)) / (8 * d), dzN = ((a + 2 * b + cc) - (gg + 2 * hh + ii)) / (8 * d);
+      var t = Math.sqrt(dzE * dzE + dzN * dzN), S = Math.atan(t);
+      tanb[i] = t; slope8[i] = Math.min(254, Math.round(S * 180 / Math.PI * 2));
+      var asp = Math.atan2(-dzE, -dzN); if (asp < 0) asp += 2 * Math.PI;
+      aspect8[i] = t < 1e-4 ? 254 : Math.min(179, Math.round(asp * 180 / Math.PI / 2)) % 180;
+      var F = Math.abs(Math.PI - Math.abs(asp - 1.25 * Math.PI)); // aspect replié pour la charge thermique
+      var hli = Math.exp(-1.467 + 1.582 * cosL * Math.cos(S) - 1.5 * Math.cos(F) * Math.sin(S) * sinL - 0.262 * sinL * Math.sin(S) + 0.607 * Math.sin(F) * Math.sin(S));
+      hli8[i] = Math.min(255, Math.round(hli * 200));
+      var nx = -dzE, ny = -dzN, nz = 1, nn = Math.sqrt(1 + t * t);
+      for (k = 0; k < suns.length; k++){
+        var V = suns[k].v, sum = 0;
+        for (var q = 0; q < V.length; q += 3){ var dot = (nx * V[q] + ny * V[q+1] + nz * V[q+2]) / nn; if (dot > 0) sum += dot; }
+        sun8[k][i] = Math.min(255, Math.round(100 * sum / suns[k].flat));
+      }
+    }
+    if (r % 150 === 0) progress('Pente, exposition, ensoleillement', r / N);
+  }
+
+  // ---- Position dans le versant (TPI, Weiss 2001) ----
+  progress('Position dans le versant', 0);
+  var demFilled0 = new Float32Array(NN); var mean0 = 0, cnt0 = 0;
+  for (i = 0; i < NN; i++) if (!nod[i]) { mean0 += dem[i]; cnt0++; } mean0 = cnt0 ? mean0 / cnt0 : 0;
+  for (i = 0; i < NN; i++) demFilled0[i] = nod[i] ? mean0 : dem[i];
+  var bm = boxMean(demFilled0, N, opts.tpiRadius); demFilled0 = null;
+  var tpi = new Float32Array(NN), s1 = 0, s2 = 0, n1 = 0;
+  for (i = 0; i < NN; i++){ if (nod[i]) continue; tpi[i] = dem[i] - bm[i]; s1 += tpi[i]; s2 += tpi[i] * tpi[i]; n1++; }
+  bm = null;
+  var sd = Math.sqrt(Math.max(1e-9, s2 / n1 - (s1 / n1) * (s1 / n1)));
+  var landform = new Uint8Array(NN), tpi8 = new Int8Array(NN);
+  for (i = 0; i < NN; i++){
+    if (nod[i]) { landform[i] = 0; continue; }
+    var zt = tpi[i] / sd, sl = slope8[i] / 2;
+    landform[i] = zt > 1 ? 1 : zt > 0.5 ? 2 : zt >= -0.5 ? (sl > 5 ? 3 : 4) : zt >= -1 ? 5 : 6;
+    tpi8[i] = Math.max(-127, Math.min(127, Math.round(tpi[i])));
+  }
+  tpi = null;
+
+  // ---- Comblement des cuvettes : Priority-Flood+epsilon (Barnes, Lehman, Mulla 2014) ----
+  progress('Comblement des cuvettes', 0);
+  var fill = new Float32Array(dem), closed = new Uint8Array(NN), heap = new Uint32Array(NN), hn = 0;
+  function hpush(j){ var kk = hn++, v = fill[j]; while (kk > 0){ var p = (kk - 1) >> 1; if (fill[heap[p]] <= v) break; heap[kk] = heap[p]; kk = p; } heap[kk] = j; }
+  function hpop(){ var top = heap[0], last = heap[--hn]; if (hn > 0){ var kk = 0, v = fill[last];
+      while (true){ var l = 2 * kk + 1; if (l >= hn) break; var rr = l + 1; if (rr < hn && fill[heap[rr]] < fill[heap[l]]) l = rr; if (fill[heap[l]] >= v) break; heap[kk] = heap[l]; kk = l; } heap[kk] = last; } return top; }
+  var pit = new Uint32Array(NN), ph = 0, pt = 0, DR = [-1,-1,-1,0,0,1,1,1], DC = [-1,0,1,-1,1,-1,0,1];
+  for (i = 0; i < NN; i++){
+    if (nod[i]) { closed[i] = 1; continue; }
+    r = (i / N) | 0; c = i - r * N;
+    var edge = (r === 0 || c === 0 || r === N - 1 || c === N - 1);
+    if (!edge) for (k = 0; k < 8; k++) if (nod[(r + DR[k]) * N + c + DC[k]]) { edge = true; break; }
+    if (edge) { closed[i] = 1; hpush(i); }
+  }
+  var processed = 0;
+  while (hn > 0 || ph < pt){
+    var ci = ph < pt ? pit[ph++] : hpop(); if (ph === pt) { ph = 0; pt = 0; }
+    r = (ci / N) | 0; c = ci - r * N; var up = nextUp(fill[ci]);
+    for (k = 0; k < 8; k++){ var rr2 = r + DR[k], cc2 = c + DC[k]; if (rr2 < 0 || cc2 < 0 || rr2 >= N || cc2 >= N) continue;
+      var ni = rr2 * N + cc2; if (closed[ni]) continue; closed[ni] = 1; if (fill[ni] <= up) { fill[ni] = up; pit[pt++] = ni; } else hpush(ni); }
+    if ((++processed & 0x3ffff) === 0) progress('Comblement des cuvettes', processed / NN);
+  }
+  pit = null; closed = null;
+
+  // ---- Accumulation multidirectionnelle (Freeman 1991, p = 1,1 ; contours de Quinn et al. 1991) et TWI ----
+  progress('Écoulement de l’eau', 0);
+  var DIST = [Math.SQRT2,1,Math.SQRT2,1,1,Math.SQRT2,1,Math.SQRT2], LEN = [0.354,0.5,0.354,0.5,0.5,0.354,0.5,0.354];
+  var acc = new Float32Array(NN), indeg = new Uint8Array(NN);
+  for (i = 0; i < NN; i++){ if (nod[i]) continue; acc[i] = 1; r = (i / N) | 0; c = i - r * N; var n0 = 0;
+    for (k = 0; k < 8; k++){ var r3 = r + DR[k], c3 = c + DC[k]; if (r3 < 0 || c3 < 0 || r3 >= N || c3 >= N) continue; var j3 = r3 * N + c3; if (!nod[j3] && fill[j3] > fill[i]) n0++; }
+    indeg[i] = n0; }
+  var queue = heap, qh = 0, qt = 0; for (i = 0; i < NN; i++) if (!nod[i] && indeg[i] === 0) queue[qt++] = i;
+  var w = new Float64Array(8);
+  while (qh < qt){ var cj = queue[qh++]; r = (cj / N) | 0; c = cj - r * N; var zc = fill[cj], sum = 0;
+    for (k = 0; k < 8; k++){ w[k] = 0; var r4 = r + DR[k], c4 = c + DC[k]; if (r4 < 0 || c4 < 0 || r4 >= N || c4 >= N) continue; var j4 = r4 * N + c4; if (nod[j4]) continue;
+      var dz = zc - fill[j4]; if (dz > 0) { w[k] = Math.pow(dz / DIST[k], 1.1) * LEN[k]; sum += w[k]; } }
+    if (sum > 0) for (k = 0; k < 8; k++){ if (w[k] === 0) continue; var j5 = (r + DR[k]) * N + c + DC[k]; acc[j5] += acc[cj] * w[k] / sum; if (--indeg[j5] === 0) queue[qt++] = j5; }
+    if ((qh & 0x3ffff) === 0) progress('Écoulement de l’eau', qh / NN); }
+  var twi = new Float32Array(NN);
+  for (i = 0; i < NN; i++){ if (nod[i]) { twi[i] = NaN; continue; } r = (i / N) | 0; twi[i] = Math.log(acc[i] * ground[r] / Math.max(tanb[i], 0.001)); }
+  acc = null; tanb = null;
+
+  // ---- Bassins versants : direction D8 sur le relief comblé, réseau à partir d’un seuil de surface, un sous-bassin par tronçon ----
+  progress('Bassins versants', 0);
+  var rec = new Int32Array(NN).fill(-1);
+  for (i = 0; i < NN; i++){ if (nod[i]) continue; r = (i / N) | 0; c = i - r * N; var best = 0, bk = -1;
+    for (k = 0; k < 8; k++){ var r5 = r + DR[k], c5 = c + DC[k]; if (r5 < 0 || c5 < 0 || r5 >= N || c5 >= N) continue; var j6 = r5 * N + c5; if (nod[j6]) continue;
+      var drop = (fill[i] - fill[j6]) / DIST[k]; if (drop > best) { best = drop; bk = j6; } }
+    rec[i] = bk; }
+  fill = null;
+  var indeg2 = new Uint8Array(NN); for (i = 0; i < NN; i++) if (rec[i] >= 0) indeg2[rec[i]]++;
+  var order = queue; qh = 0; qt = 0; for (i = 0; i < NN; i++) if (!nod[i] && indeg2[i] === 0) order[qt++] = i;
+  var area = new Uint32Array(NN); for (i = 0; i < NN; i++) if (!nod[i]) area[i] = 1;
+  while (qh < qt){ var cu = order[qh++], rv = rec[cu]; if (rv >= 0){ area[rv] += area[cu]; if (--indeg2[rv] === 0) order[qt++] = rv; } }
+  var nOrder = qt, TH = opts.streamCells;
+  var isStream = new Uint8Array(NN), streamIn = new Uint8Array(NN);
+  for (i = 0; i < NN; i++) if (area[i] >= TH) isStream[i] = 1;
+  area = null;
+  for (i = 0; i < NN; i++) if (isStream[i] && rec[i] >= 0 && isStream[rec[i]] && streamIn[rec[i]] < 255) streamIn[rec[i]]++;
+  var basin = new Uint32Array(NN), lastUp = new Uint32Array(NN), nextId = 1;
+  for (k = 0; k < nOrder; k++){ var cs = order[k]; if (!isStream[cs]) continue;
+    basin[cs] = streamIn[cs] === 1 ? lastUp[cs] : nextId++;
+    var rd = rec[cs]; if (rd >= 0 && isStream[rd]) lastUp[rd] = basin[cs]; }
+  for (k = nOrder - 1; k >= 0; k--){ var cn = order[k]; if (isStream[cn]) continue; var re = rec[cn]; basin[cn] = re >= 0 ? basin[re] : nextId++; }
+  var basin16 = null;
+  if (nextId < 65535) { basin16 = new Uint16Array(NN); for (i = 0; i < NN; i++) basin16[i] = basin[i]; }
+  return {slope8: slope8, aspect8: aspect8, hli8: hli8, sun8: sun8, landform: landform, tpi8: tpi8, twi: twi, basin: basin16 || basin, nBasins: nextId - 1, nodCount: nodCount, tpiSd: sd};
+}
+
+self.onmessage = function(e){
+  try {
+    var m = e.data, grid = m.grid, N = grid.N, NN = N * N, tile = grid.tile, i;
+    var dem = new Float32Array(NN);
+    m.demTiles.forEach(function(t){ var a = new Float32Array(t.buf); for (var r = 0; r < tile; r++) dem.set(a.subarray(r * tile, (r + 1) * tile), (t.ty * tile + r) * N + t.tx * tile); });
+    var parsePages = function(pages){ var out = []; (pages || []).forEach(function(p){ var j = JSON.parse(p); for (var k = 0; k < j.features.length; k++) out.push(j.features[k]); }); return out; };
+
+    progress('Essences forestières', 0);
+    var feats = parsePages(m.vec.forest); var nForest = feats.length;
+    if (nForest > 65534) throw new Error('trop de parcelles pour l’index 16 bits');
+    var forestProps = [null], forestId = new Uint16Array(NN);
+    rasterizePolygons(feats, grid, forestId, function(f){ forestProps.push({code: f.properties.code_tfv, essence: f.properties.essence, tfv: f.properties.tfv}); return forestProps.length - 1; });
+    feats = null;
+    var gj = JSON.parse(m.geolText), geolProps = [null], geolId = new Uint8Array(NN);
+    rasterizePolygons(gj.features, grid, geolId, function(f){ geolProps.push({descr: f.properties.DESCR, type: f.properties.TYPE}); return Math.min(255, geolProps.length - 1); });
+
+    progress('Forêts anciennes et coupes', 0);
+    var em = new Uint8Array(NN); feats = parsePages(m.vec.em1850);
+    rasterizePolygons(feats, grid, em, function(f){ return String(f.properties.theme || '').indexOf('EM9') >= 0 ? 1 : null; }); var nEm = feats.length;
+    var mask = new Uint8Array(NN); feats = parsePages(m.vec.mask2023);
+    rasterizePolygons(feats, grid, mask, function(f){ return f.properties.nature === 'Forêt' || !f.properties.nature ? 1 : null; }); var nMask = feats.length;
+    // Lisières de la BD Forêt, calculées tôt : les deux cartes forestières ne se superposent pas au mètre près,
+    // donc une absence du masque 2023 à moins de 30 m d’une lisière est un écart de tracé, pas une coupe.
+    var edgeMask = new Uint8Array(NN);
+    for (var r0 = 0; r0 < N; r0++) for (var c0 = 0; c0 < N; c0++){ i = r0 * N + c0; var fo = forestId[i] > 0;
+      if ((c0 > 0 && (forestId[i-1] > 0) !== fo) || (r0 > 0 && (forestId[i-N] > 0) !== fo) || (c0 < N-1 && (forestId[i+1] > 0) !== fo) || (r0 < N-1 && (forestId[i+N] > 0) !== fo)) edgeMask[i] = 1; }
+    var dEdge = distance10(edgeMask, N, grid.groundRes); edgeMask = null;
+    var age = new Uint8Array(NN);
+    for (i = 0; i < NN; i++){
+      var fid = forestId[i], cut = fid && String(forestProps[fid].code || '').indexOf('FF0') === 0;
+      if (fid && (cut || (!mask[i] && dEdge[i] >= 3))) age[i] = 3;  // coupe, ou plus boisé en 2021-2023 (hors bande de 30 m)
+      else if (fid) age[i] = em[i] ? 1 : 2;                         // ancienne (déjà boisée vers 1850) ou récente
+      else if (mask[i] && dEdge[i] >= 3) age[i] = 4;                // boisement absent de la BD Forêt
+      else age[i] = em[i] ? 5 : 0;                                  // 5 : boisé vers 1850, déboisé depuis
+    }
+    em = null; mask = null;
+
+    progress('Eau, routes, chemins, haies', 0);
+    var water = new Uint8Array(NN); feats = parsePages(m.vec.hydro); var nHydro = feats.length;
+    rasterizeLines(feats, grid, water, function(){ return 1; });
+    feats = parsePages(m.vec.lakes); var nLakes = feats.length; rasterizePolygons(feats, grid, water, function(){ return 1; });
+    var road = new Uint8Array(NN), track = new Uint8Array(NN); feats = parsePages(m.vec.roads); var nRoads = feats.length;
+    var DRIVE = {'Route à 1 chaussée':1,'Route à 2 chaussées':1,'Route empierrée':1,'Bretelle':1,'Rond-point':1,'Type autoroutier':1};
+    var TRACK = {'Chemin':1,'Sentier':1};
+    rasterizeLines(feats, grid, road, function(f){ return DRIVE[f.properties.nature] ? 1 : 0; });
+    rasterizeLines(feats, grid, track, function(f){ return TRACK[f.properties.nature] ? 1 : 0; });
+    var hedge = new Uint8Array(NN); feats = parsePages(m.vec.hedges); var nHedges = feats.length;
+    rasterizeLines(feats, grid, hedge, function(){ return 1; }); feats = null;
+    var g = grid.groundRes;
+    var dWater = distance10(water, N, g); water = null;
+    var dRoad = distance10(road, N, g); road = null;
+    var dTrack = distance10(track, N, g); track = null;
+    var dHedge = distance10(hedge, N, g); hedge = null;
+
+    var terr = computeTerrain(dem, grid, m.opts);
+
+    progress('Centiles d’humidité', 0.95);
+    // centile du TWI parmi les cellules boisées ou de haies, échantillon régulier
+    var twi = terr.twi, sample = [], nf = 0, kk = 0;
+    for (i = 0; i < NN; i++) if ((forestId[i] || dHedge[i] === 0) && twi[i] === twi[i]) nf++;
+    var step = Math.max(1, Math.floor(nf / 200000));
+    for (i = 0; i < NN; i++) if ((forestId[i] || dHedge[i] === 0) && twi[i] === twi[i]) { if (kk++ % step === 0) sample.push(twi[i]); }
+    sample.sort(function(a, b){ return a - b; });
+    var twiP = new Uint8Array(NN), twi8 = new Uint8Array(NN), Sn = sample.length;
+    for (i = 0; i < NN; i++){ var v = twi[i]; if (v !== v) { twiP[i] = 255; twi8[i] = 255; continue; }
+      twi8[i] = Math.max(0, Math.min(254, Math.round(v * 10)));
+      if (!Sn) { twiP[i] = 50; continue; }
+      var lo = 0, hi = Sn; while (lo < hi){ var mid = (lo + hi) >> 1; if (sample[mid] < v) lo = mid + 1; else hi = mid; }
+      twiP[i] = Math.round(100 * lo / Sn); }
+    terr.twi = null;
+    var dem16 = new Uint16Array(NN); for (i = 0; i < NN; i++) dem16[i] = dem[i] > -1000 && dem[i] < 6500 ? Math.round(dem[i] * 10) : 65535;
+    dem = null;
+
+    var layers = {dem16: dem16, slope8: terr.slope8, aspect8: terr.aspect8, hli8: terr.hli8, sunA: terr.sun8[0], sunS: terr.sun8[1], sunO: terr.sun8[2],
+      landform: terr.landform, tpi8: terr.tpi8, twi8: twi8, twiP: twiP, basin: terr.basin, forestId: forestId, geolId: geolId, age: age,
+      dWater: dWater, dRoad: dRoad, dTrack: dTrack, dHedge: dHedge, dEdge: dEdge};
+    var transfer = Object.keys(layers).map(function(k){ return layers[k].buffer; });
+    progress('Terminé', 1);
+    post('done', {layers: layers, forestProps: forestProps, geolProps: geolProps,
+      counts: {forest: nForest, em1850: nEm, mask2023: nMask, hydro: nHydro, lakes: nLakes, roads: nRoads, hedges: nHedges, basins: terr.nBasins, nodata: terr.nodCount, tpiSd: terr.tpiSd}}, transfer);
+  } catch (err) { post('error', {message: String(err && err.stack || err)}); }
+};
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+<script>
+'use strict';
+const CODE_VERSION = '3.4.0';
+const CALC_VERSION = '2.0.0'; // version des calculs lourds : change seulement si le worker change
+document.getElementById('ver').textContent = CODE_VERSION;
+
+// ====================== Zone et grille ======================
+const R = 6378137;
+// Zones : une zone de 15 km par centre. Changer de zone recharge la page ; chaque zone a son propre cache.
+const ZONES = {jarnages: {lat: 46.19, lon: 2.08, name: 'Jarnages'}};
+function readZone(){
+  const h = decodeURIComponent((location.hash || '').replace(/^#/, '')), m = h.match(/^zone=(.+)$/);
+  let z = m ? m[1] : null; try { if (!z) z = localStorage.getItem('zone'); } catch {}
+  if (z && ZONES[z]) return {id: z, ...ZONES[z]};
+  const pt = z && z.match(/^pt(-?\d+\.\d+)_(-?\d+\.\d+)(?:_(.*))?$/);
+  if (pt) return {id: z, lat: +pt[1], lon: +pt[2], name: pt[3] || `${pt[1]} N, ${pt[2]} E`};
+  return {id: 'jarnages', ...ZONES.jarnages};
+}
+const CENTER = readZone();
+const RADIUS_M = 15000, BUFFER_M = 1500, GROUND_RES = 10, TILE = 1100, DEM_OVERSAMPLE = 2;
+const X0 = R * CENTER.lon * Math.PI / 180, Y0 = R * Math.log(Math.tan(Math.PI / 4 + CENTER.lat * Math.PI / 360));
+const PX = GROUND_RES / Math.cos(CENTER.lat * Math.PI / 180);
+const N = Math.ceil(2 * (RADIUS_M + BUFFER_M) / GROUND_RES / TILE) * TILE;
+const GRID = {N, tile: TILE, px: PX, groundRes: GROUND_RES, x0: X0 - N / 2 * PX, y1: Y0 + N / 2 * PX, x1: X0 + N / 2 * PX, y0: Y0 - N / 2 * PX};
+const toLatLng = (x, y) => [Math.atan(Math.sinh(y / R)) * 180 / Math.PI, x / R * 180 / Math.PI];
+const toMerc = (lat, lng) => [R * lng * Math.PI / 180, R * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))];
+const BOUNDS = [toLatLng(GRID.x0, GRID.y0), toLatLng(GRID.x1, GRID.y1)];
+const GRID_KEY = `${CENTER.id}-r${RADIUS_M}-b${BUFFER_M}-res${GROUND_RES}-N${N}-agg${DEM_OVERSAMPLE}`;
+const LL_SW = toLatLng(GRID.x0, GRID.y0), LL_NE = toLatLng(GRID.x1, GRID.y1);
+const WORKER_OPTS = {tpiRadius: 30, streamCells: 2500, sunDoys: [227, 258, 288]}; // TPI fenêtre 610 m ; réseau dès 0,25 km² ; 15 août, 15 sept., 15 oct.
+
+// ====================== Espèces ======================
+// Hôtes en deux catégories, sans note inventée :
+//  « connu » : genre d’arbre cité comme hôte ectomycorhizien dans la source ;
+//  « possible » : peuplement dont l’essence n’est pas précisée par la BD Forêt (feuillus, conifères, mélange) mais compatible
+//   avec le type de forêt cité, ou essence citée de façon moins nette par la source.
+// Source des hôtes : texte des articles de Wikipédia en anglais de chaque espèce, lu le 3 novembre 2026 (références citées non relues).
+// Déductions de l’appli, absentes de la source et signalées « déduit » : hêtre et châtaignier pour le cèpe d’été,
+// haies comme hôte possible (essences des haies inconnues), landes et forêts ouvertes pour la coulemelle.
+// Groupes BD Forêt : chene (Quercus), hetre (Fagus), chataignier (Castanea), pins (Pinus), epicea (Picea et Abies),
+// douglas (Pseudotsuga), meleze (Larix), feuillus / coniferes / mixte (essence non précisée).
+const ALL_FOREST = ['chene','hetre','chataignier','pins','epicea','douglas','meleze','feuillus','coniferes','mixte'];
+const SPECIES = [
+  {id:'edulis', name:'Cèpe de Bordeaux', latin:'Boletus edulis', model:'brejon',
+   known:['chene','hetre','chataignier','pins','epicea'], possible:['feuillus','coniferes','mixte'], hedge:true,
+   hostSrc:'forêts de feuillus et de conifères ; pins, épicéas, sapins, châtaigniers, hêtres, chênes'},
+  {id:'reticulatus', name:'Cèpe d’été', latin:'Boletus reticulatus',
+   known:['chene'], possible:['hetre','chataignier','feuillus','mixte'], hedge:true,
+   hostSrc:'forêts de feuillus, avec les chênes ; « moins spécifique que les autres cèpes » ; hêtre et châtaignier : déduit, non cité'},
+  {id:'aereus', name:'Cèpe bronzé', latin:'Boletus aereus',
+   known:['chene','hetre','chataignier'], possible:['feuillus','mixte'], hedge:true,
+   hostSrc:'feuillus, surtout chênes, hêtres, châtaigniers'},
+  {id:'pinophilus', name:'Cèpe des pins', latin:'Boletus pinophilus',
+   known:['pins','epicea','chataignier','chene','hetre'], possible:['coniferes','feuillus','mixte'], hedge:true,
+   hostSrc:'surtout forêts de conifères : pins, sapin pectiné, épicéa ; aussi châtaigniers, chênes, hêtres'},
+  {id:'cibarius', name:'Girolle', latin:'Cantharellus cibarius',
+   known:[], possible:ALL_FOREST, hedge:true,
+   hostSrc:'forêts de feuillus et de conifères, sans genre précisé par la source'},
+  {id:'tubaeformis', name:'Chanterelle en tube', latin:'Craterellus tubaeformis',
+   known:['douglas'], possible:['coniferes','pins','epicea','meleze','mixte'], hedge:false,
+   hostSrc:'ectomycorhizes démontrées avec le douglas et la pruche ; forêts riches en bois mort décomposé'},
+  {id:'cornucopioides', name:'Trompette de la mort', latin:'Craterellus cornucopioides',
+   known:['hetre','chene'], possible:['chataignier','feuillus','mixte'], hedge:true,
+   hostSrc:'surtout sous hêtres, chênes ou autres feuillus, dans la mousse des endroits humides'},
+  {id:'hydnum', name:'Pied-de-mouton', latin:'Hydnum repandum',
+   known:[], possible:ALL_FOREST, hedge:true,
+   hostSrc:'bois de conifères ou de feuillus, sans genre précisé par la source'},
+  {id:'procera', name:'Coulemelle', latin:'Macrolepiota procera', saprotroph:true,
+   known:[], possible:[], hedge:false,
+   hostSrc:'prairies et pâtures, parfois en bois (champignon décomposeur, sans arbre hôte) ; landes et forêts ouvertes : déduit'},
+];
+const EDIBLE_LATIN = new Set(SPECIES.map(s => s.latin).concat(['Boletus','Cantharellus','Craterellus','Hydnum','Morchella esculenta','Morchella','Lactarius deliciosus','Craterellus lutescens','Hydnum rufescens']));
+
+const LAYER_GROUPS = [
+  ['Relief', [['_dem','Altitude'],['_slope','Pente'],['_aspect','Exposition'],['_landform','Position dans le versant'],['_twi','Concentration d’humidité (TWI)'],['_hli','Chaleur du versant (HLI)'],['_sunA','Ensoleillement mi-août'],['_sunS','Ensoleillement mi-septembre'],['_sunO','Ensoleillement mi-octobre'],['_basin','Bassins versants']]],
+  ['Eau', [['_water','Distance à l’eau']]],
+  ['Forêt', [['_forest','Essences (BD Forêt)'],['_age','Ancienneté de la forêt'],['_edge','Distance à la lisière'],['_hedge','Haies du bocage'],['_fp','Genres d’arbres ForestPaths 10 m (non validée)']]],
+  ['Sol', [['_ph','pH du sol'],['_clay','Argile'],['_sand','Sable'],['_soc','Carbone organique'],['_geol','Géologie (1/1 000 000)']]],
+  ['Accès', [['_road','Distance à une route'],['_track','Distance à un chemin']]],
+];
+
+function hostGroup(p){
+  if (!p) return null;
+  const e = (p.essence || '').toLowerCase(), code = p.code || '';
+  if (e.includes('chêne')) return 'chene';
+  if (e.includes('hêtre')) return 'hetre';
+  if (e.includes('châtaignier')) return 'chataignier';
+  if (e.includes('épicéa') || e.includes('sapin')) return 'epicea'; // avant « pin » : « sapin » contient « pin »
+  if (/\bpins?\b/.test(e)) return 'pins';
+  if (e.includes('douglas')) return 'douglas';
+  if (e.includes('mélèze')) return 'meleze';
+  if (e.includes('peuplier')) return 'peuplier';
+  if (e.includes('robinier')) return 'robinier';
+  if (e === 'mixte') return 'mixte';
+  if (e.includes('conif')) return 'coniferes';
+  if (e.includes('feuillu')) return 'feuillus';
+  if (code === 'LA4' || e === 'nc') return 'lande';
+  if (code.startsWith('FF0') || e === 'nr') return 'sans_couvert';
+  return 'autre';
+}
+const AGE_NAMES = ['hors forêt', 'forêt ancienne (déjà boisée vers 1850)', 'forêt récente (boisée après 1850)', 'coupe ou déboisement récent', 'boisement absent de la BD Forêt', 'boisée vers 1850, déboisée depuis'];
+const LANDFORM_NAMES = ['—', 'crête', 'haut de versant', 'mi-versant', 'replat', 'bas de versant', 'fond de vallon'];
+
+// ====================== Modèle publié pour le cèpe ======================
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+// Brejon Lamartiniere E. et Hoffman J.I., « Predicting porcini », bioRxiv 10.64898/2025.12.12.693895, code et données :
+// github.com/ebrejonl/Boletus_fruiting_triggers. Modèle mixte binomial négatif (nbinom1, effet aléatoire « année ») :
+//   log(nombre attendu de cèpes par jour) = b0 + bP × P26 + b1 × T20 + b2 × T20²
+// P26 : pluie moyenne par jour sur les 26 derniers jours (mm/j) ; T20 : température moyenne de l’air sur les 20 derniers jours (°C).
+// Coefficients recalculés le 3 novembre 2026 avec leur code et leurs données (tous sites) ; optimum −b1/(2·b2) = 13,7 °C
+// (le texte de l’article l’arrondit à environ 13 °C). Sites : hêtraies d’Europe centrale (titre de l’article), 2015-2024.
+// Météo de l’étude : grille E-OBS de 0,1° (environ 11 km), une maille interpolée. L’appliquer à AROME 1,5 km et à la maille
+// de 10 m (correction d’altitude) est un changement d’échelle physiquement cohérent mais non validé par l’étude.
+// Validation hors échantillon faite par moi (une année laissée de côté à tour de rôle) : AUC moyenne 0,81 (0,69 à 0,97) ; pas un chiffre de l’article.
+const BREJON = {b0: -19.43584, bP: 0.42404, b1: 2.86579, b2: -0.10455, phi: 36.0903, muRef: 5.334,
+  T: [3.9, 23.6], P: [0.07, 8.58], months: [8, 9, 10, 11]};
+// Indice affiché : probabilité qu’un jour soit un jour de pousse selon le modèle, 1 − (1 + φ)^(−μ/φ),
+// rapportée à celle du 95e centile des journées de l’étude (μ = 5,33). 1 = journée parmi les 5 % les plus favorables de l’étude.
+const pRef = 1 - Math.pow(1 + BREJON.phi, -BREJON.muRef / BREJON.phi);
+function brejonIndex(T20, P26){
+  const mu = Math.exp(BREJON.b0 + BREJON.bP * P26 + BREJON.b1 * T20 + BREJON.b2 * T20 * T20);
+  const p = 1 - Math.pow(1 + BREJON.phi, -mu / BREJON.phi);
+  return {mu, p, idx: Math.min(1, p / pRef)};
+}
+function brejonDomain(T20, P26, iso){
+  const m = +iso.slice(5, 7), out = [];
+  if (!BREJON.months.includes(m)) out.push('hors de la saison étudiée (août à novembre)');
+  if (T20 < BREJON.T[0] || T20 > BREJON.T[1]) out.push(`température hors de la plage étudiée (${BREJON.T[0]} à ${BREJON.T[1]} °C)`);
+  if (P26 < BREJON.P[0] || P26 > BREJON.P[1]) out.push(`pluie hors de la plage étudiée (${BREJON.P[0]} à ${BREJON.P[1]} mm/j)`);
+  return out;
+}
+const LAPSE = -0.0065; // baisse de température avec l’altitude, °C/m (atmosphère standard)
+// Humidité du relief, choix de Nara (3 novembre 2026), motivé par des étés de plus en plus secs.
+// Base établie : l’humidité du sol est liée à la production de champignons (Olano et al. 2020 ; Karavani et al. 2018) et
+// l’indice d’humidité topographique (TWI, Beven et Kirkby 1979) repère où l’eau se concentre. Non établi : l’ampleur de l’effet.
+// Règle retenue : facteur = 0,5 + 0,5 × centile du TWI parmi les bois et haies de la zone (0,5 pour le plus sec, 1 pour le plus humide).
+const humidFactor = (i) => { const p = S.layers.twiP[i]; return p === 255 ? null : 0.5 + 0.5 * p / 100; };
+
+// ====================== État ======================
+const S = {focus:null, db:null, raw:{}, layers:null, derived:null, forestProps:null, geolProps:null, forestHost:null, disk:null, soil:null,
+  gbif:null, meteo:null, temoins:new Map(), events:[], addingTemoin:false, mode:'pousse', dayIdx:0, checks:{}};
+const $ = (id) => document.getElementById(id);
+function status(msg, cls){ $('status').textContent = msg; $('status').className = cls || ''; }
+function setProg(f){ $('prog').style.width = Math.round(clamp(f, 0, 1) * 100) + '%'; }
+const fmt = (v, d) => (v === v && v !== undefined && v !== null) ? Number(v).toFixed(d).replace('.', ',') : '—';
+const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const doyOf = (iso) => { const d = new Date(iso + 'T12:00:00Z'); return Math.floor((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5) + 1; };
+const frDate = (iso) => new Date(iso + 'T12:00:00Z').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'long'});
+
+// ====================== Stockage local (IndexedDB) ======================
+function openDB(){
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('carte-champignons', 1);
+    rq.onupgradeneeded = () => { const db = rq.result;
+      db.createObjectStore('raw', {keyPath: 'id'}); db.createObjectStore('derived', {keyPath: 'id'}); db.createObjectStore('events', {keyPath: 'eid'}); };
+    rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+  });
+}
+function idb(store, mode, fn){
+  return new Promise((res, rej) => { const tx = S.db.transaction(store, mode); const st = tx.objectStore(store); let out;
+    const r = fn(st); if (r) r.onsuccess = () => { out = r.result; };
+    tx.oncomplete = () => res(out); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+}
+const getAll = (store) => idb(store, 'readonly', st => st.getAll());
+const getOne = (store, k) => idb(store, 'readonly', st => st.get(k));
+const put = (store, v) => idb(store, 'readwrite', st => st.put(v));
+const del = (store, k) => idb(store, 'readwrite', st => st.delete(k));
+async function sha256(buf){ const h = await crypto.subtle.digest('SHA-256', buf); return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join(''); }
+const enc = new TextEncoder();
+function recBytes(rec){
+  if (rec.kind === 'dem') return rec.data;
+  if (rec.pages) return enc.encode(rec.pages.join('\n'));
+  if (rec.bin) return rec.bin;
+  return enc.encode(rec.text);
+}
+
+// ====================== Sources ======================
+const BBOX3857 = [GRID.x0, GRID.y0, GRID.x1, GRID.y1].join(',');
+function demUrl(tx, ty){
+  const bx0 = GRID.x0 + tx * TILE * PX, by1 = GRID.y1 - ty * TILE * PX, W = TILE * DEM_OVERSAMPLE;
+  return `https://data.geopf.fr/wms-r/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ELEVATION.ELEVATIONGRIDCOVERAGE.HIGHRES&STYLES=&CRS=EPSG:3857&BBOX=${[bx0, by1 - TILE * PX, bx0 + TILE * PX, by1].join(',')}&WIDTH=${W}&HEIGHT=${W}&FORMAT=image/x-bil;bits=32`;
+}
+function aggregate(buf){
+  const m = DEM_OVERSAMPLE, W = TILE * m, a = new Float32Array(buf), out = new Float32Array(TILE * TILE);
+  for (let r = 0; r < TILE; r++) for (let c = 0; c < TILE; c++){ let s = 0, k = 0;
+    for (let i = 0; i < m; i++) for (let j = 0; j < m; j++){ const v = a[(r * m + i) * W + c * m + j]; if (v > -1000 && v < 9000) { s += v; k++; } }
+    out[r * TILE + c] = k ? s / k : -99999; }
+  return out.buffer;
+}
+const VECTORS = [
+  {key:'forest', name:'BD Forêt V2 (IGN)', type:'LANDCOVER.FORESTINVENTORY.V2:formation_vegetale', sort:'id', props:null},
+  {key:'em1850', name:'Forêts de la carte d’état-major, vers 1850 (IGN)', type:'BDCARTO_ETAT-MAJOR.NIVEAU4:c_1_1_ocs_ancien', sort:'cleabs', props:null},
+  {key:'mask2023', name:'Masque forêt 2021-2023 (IGN)', type:'IGNF_MASQUE-FORET.2021-2023:masque_foret', sort:'id', props:null},
+  {key:'hydro', name:'Cours d’eau (BD TOPO)', type:'BDTOPO_V3:troncon_hydrographique', sort:'cleabs', props:'geometrie,persistance,cpx_toponyme_de_cours_d_eau'},
+  {key:'lakes', name:'Plans d’eau (BD TOPO)', type:'BDTOPO_V3:plan_d_eau', sort:'cleabs', props:'geometrie,nature,toponyme'},
+  {key:'roads', name:'Routes et chemins (BD TOPO)', type:'BDTOPO_V3:troncon_de_route', sort:'cleabs', props:'geometrie,nature'},
+  {key:'hedges', name:'Haies (IGN, Dispositif national de suivi des bocages)', type:'HAIES.BOCAGES:haie', sort:'cleabs', props:'geometrie'},
+  {key:'publicForest', name:'Forêts publiques (BD TOPO)', type:'BDTOPO_V3:foret_publique', sort:'cleabs', props:'geometrie,nature,toponyme'},
+];
+const wfsUrl = (v, count, start) => `https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=${v.type}&SRSNAME=EPSG:3857&BBOX=${BBOX3857},EPSG:3857&OUTPUTFORMAT=application/json&SORTBY=${v.sort}${v.props ? '&PROPERTYNAME=' + v.props : ''}&COUNT=${count}&STARTINDEX=${start}`;
+const GEOL_URL = `https://geoservices.brgm.fr/geologie?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=ms:LITHO_1M_SIMPLIFIEE&SRSNAME=EPSG:3857&BBOX=${BBOX3857},urn:ogc:def:crs:EPSG::3857&OUTPUTFORMAT=geojson`;
+const SOIL_BOX = {w: LL_SW[1] - 0.02, e: LL_NE[1] + 0.02, s: LL_SW[0] - 0.02, n: LL_NE[0] + 0.02};
+const SOILS = [
+  {key:'ph', cov:'phh2o_5-15cm_mean', map:'phh2o', name:'pH (eau), 5–15 cm', div:10, unit:''},
+  {key:'clay', cov:'clay_5-15cm_mean', map:'clay', name:'Argile, 5–15 cm', div:10, unit:' %'},
+  {key:'sand', cov:'sand_5-15cm_mean', map:'sand', name:'Sable, 5–15 cm', div:10, unit:' %'},
+  {key:'soc', cov:'soc_0-5cm_mean', map:'soc', name:'Carbone organique, 0–5 cm', div:10, unit:' g/kg'},
+];
+const soilUrl = (s) => `https://maps.isric.org/mapserv?map=/map/${s.map}.map&SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage&COVERAGEID=${s.cov}&FORMAT=GEOTIFF_INT16&SUBSET=X(${SOIL_BOX.w.toFixed(3)},${SOIL_BOX.e.toFixed(3)})&SUBSET=Y(${SOIL_BOX.s.toFixed(3)},${SOIL_BOX.n.toFixed(3)})&SUBSETTINGCRS=http://www.opengis.net/def/crs/EPSG/0/4326&OUTPUTCRS=http://www.opengis.net/def/crs/EPSG/0/4326`;
+
+async function fetchChecked(url, kind, attempts = 3){
+  let last;
+  for (let attempt = 1; attempt <= attempts; attempt++){
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const buf = await r.arrayBuffer();
+      if (kind === 'bil'){
+        const ct = r.headers.get('content-type') || '';
+        if (!ct.includes('bil') || buf.byteLength !== (TILE * DEM_OVERSAMPLE) ** 2 * 4) throw new Error('réponse inattendue (' + ct + ', ' + buf.byteLength + ' octets)');
+      } else if (kind === 'tiff'){
+        const h = new Uint8Array(buf.slice(0, 2)); if (!(h[0] === 0x49 && h[1] === 0x49) && !(h[0] === 0x4d && h[1] === 0x4d)) throw new Error('réponse non GeoTIFF');
+      } else {
+        const t = new TextDecoder().decode(buf.slice(0, 200)).trim();
+        if (!t.startsWith('{') && !t.startsWith('[')) throw new Error('réponse non JSON : ' + t.slice(0, 120));
+      }
+      return buf;
+    } catch (e) { last = e; if (attempt < attempts) await new Promise(r => setTimeout(r, 1500 * attempt)); }
+  }
+  throw new Error(url.split('?')[0] + ' : ' + last.message);
+}
+async function store(rec){ rec.sha256 = await sha256(recBytes(rec)); rec.fetched = rec.fetched || new Date().toISOString(); await put('raw', rec); S.raw[rec.id] = rec; }
+
+async function downloadAll(){
+  const T = N / TILE, demJobs = [];
+  for (let ty = 0; ty < T; ty++) for (let tx = 0; tx < T; tx++) demJobs.push({tx, ty});
+  const total = demJobs.length + VECTORS.length + 2 + SOILS.length; let done = 0;
+  const step = () => setProg(++done / total);
+  for (const j of demJobs){
+    const id = `dem-${GRID_KEY}-${j.tx}-${j.ty}`;
+    if (!S.raw[id]){
+      status(`Relief IGN : dalle ${done + 1} sur ${demJobs.length}…`);
+      const url = demUrl(j.tx, j.ty), src = await fetchChecked(url, 'bil'), sourceSha256 = await sha256(src), buf = aggregate(src);
+      const a = new Float32Array(buf); let mn = Infinity, mx = -Infinity, nod = 0;
+      for (const v of a){ if (!(v > -1000 && v < 9000)) { nod++; continue; } if (v < mn) mn = v; if (v > mx) mx = v; }
+      await store({id, kind:'dem', source:'IGN RGE ALTI (WMS-R, ELEVATION.ELEVATIONGRIDCOVERAGE.HIGHRES), 5 m moyenné 2×2', url, bytes:src.byteLength, sourceSha256, stats:{min:mn, max:mx, nodata:nod}, tx:j.tx, ty:j.ty, data:buf});
+    }
+    step();
+  }
+  for (const v of VECTORS){
+    const id = `vec-${v.key}-${GRID_KEY}`;
+    if (!S.raw[id]){
+      const pages = []; let start = 0, announced = null;
+      while (true){
+        status(`${v.name} : ${start} objets${announced !== null ? ' sur ' + announced : ''}…`);
+        const buf = await fetchChecked(wfsUrl(v, 5000, start), 'json'), txt = new TextDecoder().decode(buf), j = JSON.parse(txt);
+        if (announced === null) announced = j.numberMatched;
+        pages.push(txt); start += j.features.length;
+        if (j.features.length < 5000 || (typeof announced === 'number' && start >= announced)) break;
+      }
+      if (typeof announced === 'number' && start !== announced) throw new Error(`${v.name} incomplet : ${start} objets reçus sur ${announced} annoncés`);
+      await store({id, kind:'vector', key:v.key, source:v.name + ' — WFS ' + v.type, url:wfsUrl(v, 5000, 0), stats:{features:start, announced}, pages});
+    }
+    step();
+  }
+  const gid = `geol-${GRID_KEY}`;
+  if (!S.raw[gid]){ status('Géologie BRGM…'); const buf = await fetchChecked(GEOL_URL, 'json'), txt = new TextDecoder().decode(buf);
+    await store({id:gid, kind:'geol', source:'BRGM, carte lithologique simplifiée 1/1 000 000 (WFS LITHO_1M_SIMPLIFIEE)', url:GEOL_URL, stats:{features:JSON.parse(txt).features.length}, text:txt}); }
+  step();
+  // Sources facultatives : un échec n’empêche pas la carte, il est signalé
+  S.warnings = [];
+  for (const s of SOILS){
+    const id = `soil-${s.key}-${GRID_KEY}`;
+    if (!S.raw[id]){ status(`Sol (SoilGrids) : ${s.name}…`);
+      try { const url = soilUrl(s), bin = await fetchChecked(url, 'tiff'); await store({id, kind:'soil', key:s.key, source:`ISRIC SoilGrids 2.0, ${s.cov} (250 m)`, url, stats:{bytes:bin.byteLength}, bin}); }
+      catch (e) { S.warnings.push(`Sol ${s.name} indisponible (${e.message}) : facteur neutre en attendant.`); } }
+    step();
+  }
+  try { await downloadForestPaths(); } catch (e) { S.warnings.push(`Genres d’arbres ForestPaths indisponibles (${e.message}).`); }
+  try { await refreshGbif(false); } catch (e) { S.warnings.push(`GBIF indisponible (${e.message}) : saisons par défaut en attendant.`); }
+  step(); setProg(1);
+}
+async function verifyRaw(){
+  const bad = [];
+  for (const rec of Object.values(S.raw)){ const h = await sha256(recBytes(rec)); rec.verified = (h === rec.sha256); if (!rec.verified) bad.push(rec.id); }
+  return bad;
+}
+function rawComplete(){
+  const T = N / TILE;
+  for (let ty = 0; ty < T; ty++) for (let tx = 0; tx < T; tx++) if (!S.raw[`dem-${GRID_KEY}-${tx}-${ty}`]) return false;
+  return VECTORS.every(v => S.raw[`vec-${v.key}-${GRID_KEY}`]) && !!S.raw[`geol-${GRID_KEY}`];
+}
+function habitatInputs(){ return Object.values(S.raw).filter(r => r.id.includes(GRID_KEY) && (r.kind === 'dem' || r.kind === 'vector' || r.kind === 'geol')).map(r => r.id + ':' + r.sha256).sort().join('|'); }
+const vecPages = (key) => (S.raw[`vec-${key}-${GRID_KEY}`] || {}).pages || [];
+
+// ====================== ForestPaths : carte européenne des genres d’arbres (10 m, 2020) ======================
+// De Keersmaecker W., Zanaga D., Senf C. et al. (2024), « ForestPaths: European tree genus map », Zenodo,
+// doi 10.5281/zenodo.13341104, version v0.0.1, CC BY 4.0. Version en accès anticipé : « pas encore entièrement validée »
+// selon ses auteurs, aucune précision publiée. Affichée seulement, sans effet sur les notes.
+// Fichiers : archives zip par colonne de 100 km (ulx = x gauche en km), contenant des GeoTIFF de 10 000 × 10 000 pixels
+// en EPSG:3035, nommés spp_pred_ulx_<x>_uly_<y haut>.tif. Lecture partielle : seule l’entrée utile de l’archive est
+// téléchargée (requêtes « Range »), son CRC32 est contrôlé, puis seule la fenêtre de la zone est gardée.
+const FP_RECORD = 'https://zenodo.org/api/records/13341104';
+const FP_CLASSES = ['Mélèze (Larix)', 'Épicéa (Picea)', 'Pin (Pinus)', 'Hêtre (Fagus)', 'Chêne (Quercus)', 'Autres conifères', 'Autres feuillus', 'Pas d’arbres'];
+const FP_COLORS = [[90,180,172],[53,151,143],[1,102,94],[191,129,45],[140,81,10],[40,120,110],[128,205,193],[230,230,230]];
+// Projection EPSG:3035 (Lambert azimutale équivalente, ellipsoïde GRS80 ; formules EPSG, Guidance Note 7-2, méthode 9820)
+const LAEA = (() => { const a = 6378137, f = 1 / 298.257222101, e2 = 2 * f - f * f, e = Math.sqrt(e2), d2r = Math.PI / 180, lat0 = 52 * d2r, lon0 = 10 * d2r;
+  const q = (ph) => { const s = Math.sin(ph); return (1 - e2) * (s / (1 - e2 * s * s) - Math.log((1 - e * s) / (1 + e * s)) / (2 * e)); };
+  const qP = q(Math.PI / 2), b0 = Math.asin(q(lat0) / qP), Rq = a * Math.sqrt(qP / 2), D = a * Math.cos(lat0) / Math.sqrt(1 - e2 * Math.sin(lat0) ** 2) / (Rq * Math.cos(b0));
+  return (lat, lon) => { const b = Math.asin(q(lat * d2r) / qP), dl = lon * d2r - lon0, B = Rq * Math.sqrt(2 / (1 + Math.sin(b0) * Math.sin(b) + Math.cos(b0) * Math.cos(b) * Math.cos(dl)));
+    return [4321000 + B * D * Math.cos(b) * Math.sin(dl), 3210000 + (B / D) * (Math.cos(b0) * Math.sin(b) - Math.sin(b0) * Math.cos(b) * Math.cos(dl))]; }; })();
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8){ let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+async function fetchRange(url, a, b){
+  let last; for (let k = 1; k <= 3; k++){ try { const r = await fetch(url, {headers: {Range: `bytes=${a}-${b}`}});
+    if (r.status !== 206) throw new Error('HTTP ' + r.status + ' (lecture partielle refusée)'); const buf = await r.arrayBuffer();
+    if (buf.byteLength !== b - a + 1) throw new Error(`réponse tronquée (${buf.byteLength} octets au lieu de ${b - a + 1})`); return buf; }
+    catch (e) { last = e; if (k < 3) await new Promise(r => setTimeout(r, 1500 * k)); } }
+  throw new Error(url.split('?')[0] + ' : ' + last.message);
+}
+async function zipEntry(url, size, name){
+  const tailLen = Math.min(size, 65557), tail = new DataView(await fetchRange(url, size - tailLen, size - 1));
+  let e = -1; for (let i = tailLen - 22; i >= 0; i--) if (tail.getUint32(i, true) === 0x06054b50){ e = i; break; }
+  if (e < 0) throw new Error('fin d’archive introuvable');
+  const cdSize = tail.getUint32(e + 12, true), cdOff = tail.getUint32(e + 16, true); if (cdOff === 0xFFFFFFFF) throw new Error('archive ZIP64 non prise en charge');
+  const cd = new DataView(await fetchRange(url, cdOff, cdOff + cdSize - 1)); let p = 0;
+  while (p + 46 <= cd.byteLength && cd.getUint32(p, true) === 0x02014b50){
+    const meth = cd.getUint16(p + 10, true), crc = cd.getUint32(p + 16, true), csz = cd.getUint32(p + 20, true), usz = cd.getUint32(p + 24, true), nl = cd.getUint16(p + 28, true), xl = cd.getUint16(p + 30, true), cl = cd.getUint16(p + 32, true), lho = cd.getUint32(p + 42, true);
+    const nm = new TextDecoder().decode(new Uint8Array(cd.buffer, p + 46, nl));
+    if (nm === name){
+      const h = new DataView(await fetchRange(url, lho, lho + 29)); if (h.getUint32(0, true) !== 0x04034b50) throw new Error('en-tête local invalide');
+      const start = lho + 30 + h.getUint16(26, true) + h.getUint16(28, true), comp = await fetchRange(url, start, start + csz - 1);
+      let raw; if (meth === 0) raw = comp; else if (meth === 8) raw = await new Response(new Blob([comp]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+      else throw new Error('compression ' + meth + ' non prise en charge');
+      const u8 = new Uint8Array(raw); if (u8.length !== usz || crc32(u8) !== crc) throw new Error(name + ' : contrôle CRC32 de l’archive incorrect');
+      return {raw, crc, csz, usz};
+    }
+    p += 46 + nl + xl + cl;
+  }
+  return null; // pas de dalle : zone hors de la carte
+}
+function fpBox(){ // emprise de la grille en EPSG:3035
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [mx, my] of [[GRID.x0, GRID.y0], [GRID.x1, GRID.y0], [GRID.x0, GRID.y1], [GRID.x1, GRID.y1], [(GRID.x0 + GRID.x1) / 2, GRID.y0], [(GRID.x0 + GRID.x1) / 2, GRID.y1]]){
+    const [la, lo] = toLatLng(mx, my), [X, Y] = LAEA(la, lo); x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y); }
+  return {x0: x0 - 100, x1: x1 + 100, y0: y0 - 100, y1: y1 + 100};
+}
+function fpTiles(){ // dalles de 100 km : x de ux à ux + 100 km, y de uy − 100 km à uy, avec uy = 40 km modulo 100 km
+  const b = fpBox(), out = [];
+  for (let ux = Math.floor(b.x0 / 1e5) * 1e5; ux < b.x1; ux += 1e5)
+    for (let uy = Math.floor((b.y0 - 4e4) / 1e5) * 1e5 + 4e4 + 1e5; uy - 1e5 < b.y1; uy += 1e5) out.push({ux, uy});
+  return out;
+}
+async function downloadForestPaths(){
+  const tiles = fpTiles(), need = tiles.filter(t => !S.raw[`fp-${GRID_KEY}-${t.ux / 1000}-${t.uy / 1000}`]); if (!need.length) return;
+  const rec = JSON.parse(new TextDecoder().decode(await fetchChecked(FP_RECORD, 'json'))), b = fpBox();
+  for (const t of need){
+    const zipName = `ulx_${t.ux / 1000}.zip`, entry = `spp_pred_ulx_${t.ux / 1000}_uly_${t.uy / 1000}.tif`, f = rec.files.find(x => x.key === zipName);
+    const id = `fp-${GRID_KEY}-${t.ux / 1000}-${t.uy / 1000}`;
+    if (!f){ await store({id, kind: 'fp', source: 'ForestPaths, carte européenne des genres d’arbres 2020 (Zenodo 10.5281/zenodo.13341104), hors couverture', url: FP_RECORD, absent: true, text: ''}); continue; }
+    status(`Genres d’arbres ForestPaths : ${entry}…`);
+    const z = await zipEntry(f.links.self, f.size, entry);
+    if (!z){ await store({id, kind: 'fp', source: 'ForestPaths, carte européenne des genres d’arbres 2020 (Zenodo 10.5281/zenodo.13341104), hors couverture', url: f.links.self, absent: true, text: ''}); continue; }
+    const tiff = await GeoTIFF.fromArrayBuffer(z.raw), img = await tiff.getImage(), W = img.getWidth(), H = img.getHeight(), [ox, oy] = img.getOrigin(), [rx, ry] = img.getResolution();
+    const epsg = (img.getGeoKeys() || {}).ProjectedCSTypeGeoKey;
+    if (epsg !== 3035 || Math.abs(rx - 10) > 1e-6 || Math.abs(ry + 10) > 1e-6 || Math.abs(ox - t.ux) > 1e-3 || Math.abs(oy - t.uy) > 1e-3) throw new Error(`${entry} : géoréférencement inattendu (EPSG ${epsg}, origine ${ox}, ${oy}, pas ${rx})`);
+    const c0 = clamp(Math.floor((b.x0 - ox) / 10), 0, W), c1 = clamp(Math.ceil((b.x1 - ox) / 10), 0, W), r0 = clamp(Math.floor((oy - b.y1) / 10), 0, H), r1 = clamp(Math.ceil((oy - b.y0) / 10), 0, H);
+    if (c1 <= c0 || r1 <= r0){ await store({id, kind: 'fp', source: 'ForestPaths (hors fenêtre)', url: f.links.self, absent: true, text: ''}); continue; }
+    const [ras] = await img.readRasters({window: [c0, r0, c1, r1]}), a = Uint8Array.from(ras), counts = new Array(9).fill(0);
+    for (const v of a) counts[v <= 7 ? v : 8]++;
+    await store({id, kind: 'fp', source: `ForestPaths, carte européenne des genres d’arbres 2020, 10 m, v0.0.1 (De Keersmaecker et al., Zenodo 10.5281/zenodo.13341104, CC BY 4.0) — ${entry}`, url: f.links.self,
+      entry, zipCrc32: z.crc.toString(16), x0: ox + c0 * 10, y1: oy - r0 * 10, w: c1 - c0, h: r1 - r0, stats: {bytes: a.length, counts}, bin: a.buffer});
+  }
+}
+// Rééchantillonnage au plus proche voisin sur la grille de 10 m de l’appli (projection de chaque centre de maille en EPSG:3035)
+function loadForestPaths(){
+  const recs = Object.values(S.raw).filter(r => r.kind === 'fp' && r.id.includes(GRID_KEY) && !r.absent && r.bin); if (!recs.length) return null;
+  const out = new Uint8Array(N * N).fill(255), segs = recs.map(r => ({x0: r.x0, y1: r.y1, w: r.w, h: r.h, a: new Uint8Array(r.bin)}));
+  for (let r = 0; r < N; r++){ const y = GRID.y1 - (r + 0.5) * PX;
+    for (let c = 0; c < N; c++){ const i = r * N + c; if (S.disk && !S.disk[i]) continue;
+      const [la, lo] = toLatLng(GRID.x0 + (c + 0.5) * PX, y), [X, Y] = LAEA(la, lo);
+      for (const s of segs){ const cc = Math.floor((X - s.x0) / 10), rr = Math.floor((s.y1 - Y) / 10);
+        if (cc >= 0 && rr >= 0 && cc < s.w && rr < s.h){ out[i] = s.a[rr * s.w + cc]; break; } } } }
+  return out;
+}
+function fpShare(fid){ // part de chaque genre ForestPaths dans un peuplement BD Forêt
+  if (!S.fp || !fid) return null; const n = new Array(8).fill(0), F = S.layers.forestId; let t = 0;
+  for (let i = 0; i < F.length; i++) if (F[i] === fid){ const v = S.fp[i]; if (v <= 7){ n[v]++; t++; } }
+  return t ? n.map((k, j) => [j, k / t]).filter(x => x[1] >= 0.05).sort((x, y) => y[1] - x[1]) : null;
+}
+
+// ====================== Sol (SoilGrids) ======================
+async function loadSoils(){
+  if (!window.GeoTIFF) throw new Error('bibliothèque GeoTIFF non chargée');
+  const out = {};
+  for (const s of SOILS){
+    const rec = S.raw[`soil-${s.key}-${GRID_KEY}`]; if (!rec) continue;
+    const tiff = await GeoTIFF.fromArrayBuffer(rec.bin.slice(0)), img = await tiff.getImage(), [ras] = await img.readRasters();
+    const bb = img.getBoundingBox(), nd = img.getGDALNoData();
+    out[s.key] = {w: img.getWidth(), h: img.getHeight(), bb, nd, div: s.div, a: Int16Array.from(ras)};
+  }
+  // index de cellule SoilGrids par ligne et par colonne de la grille
+  const any = Object.values(out)[0]; if (!any) return null;
+  const rowIdx = new Int32Array(N), colIdx = new Int32Array(N);
+  for (let r = 0; r < N; r++){ const lat = toLatLng(0, GRID.y1 - (r + 0.5) * PX)[0]; rowIdx[r] = Math.floor((any.bb[3] - lat) / (any.bb[3] - any.bb[1]) * any.h); }
+  for (let c = 0; c < N; c++){ const lon = toLatLng(GRID.x0 + (c + 0.5) * PX, 0)[1]; colIdx[c] = Math.floor((lon - any.bb[0]) / (any.bb[2] - any.bb[0]) * any.w); }
+  out.rowIdx = rowIdx; out.colIdx = colIdx; out.w = any.w; out.h = any.h;
+  return out;
+}
+function soilAt(key, i){
+  const s = S.soil && S.soil[key]; if (!s) return NaN;
+  const r = (i / N) | 0, c = i - r * N, sr = S.soil.rowIdx[r], sc = S.soil.colIdx[c];
+  if (sr < 0 || sc < 0 || sr >= s.h || sc >= s.w) return NaN;
+  const v = s.a[sr * s.w + sc]; if (v === s.nd || v <= 0) return NaN;
+  return v / s.div;
+}
+
+// ====================== GBIF ======================
+const GBIF_ZONE = `POLYGON((${LL_SW[1].toFixed(3)} ${LL_SW[0].toFixed(3)},${LL_NE[1].toFixed(3)} ${LL_SW[0].toFixed(3)},${LL_NE[1].toFixed(3)} ${LL_NE[0].toFixed(3)},${LL_SW[1].toFixed(3)} ${LL_NE[0].toFixed(3)},${LL_SW[1].toFixed(3)} ${LL_SW[0].toFixed(3)}))`;
+const GBIF_REGION = 'POLYGON((0.5 44.8,3.5 44.8,3.5 47,0.5 47,0.5 44.8))'; // rectangle 0,5–3,5° E × 44,8–47° N (Limousin, Auvergne, sud du Centre)
+async function refreshGbif(force){
+  const id = `gbif-${GRID_KEY}`, have = S.raw[id];
+  if (have && !force && (Date.now() - Date.parse(have.fetched)) < 30 * 864e5) return;
+  status('Observations publiques (GBIF)…');
+  const get = async (u) => JSON.parse(new TextDecoder().decode(await fetchChecked(u, 'json')));
+  const species = {};
+  for (const sp of SPECIES){
+    const m = await get('https://api.gbif.org/v1/species/match?name=' + encodeURIComponent(sp.latin));
+    if (!m.usageKey) continue;
+    const reg = await get(`https://api.gbif.org/v1/occurrence/search?taxonKey=${m.usageKey}&geometry=${encodeURIComponent(GBIF_REGION)}&facet=month&facetLimit=12&limit=0`);
+    let scope = 'rectangle 0,5–3,5° E × 44,8–47° N', facet = reg.facets && reg.facets[0] ? reg.facets[0].counts : [], total = reg.count;
+    if (total < 60){ const fr = await get(`https://api.gbif.org/v1/occurrence/search?taxonKey=${m.usageKey}&country=FR&facet=month&facetLimit=12&limit=0`);
+      scope = 'France'; facet = fr.facets && fr.facets[0] ? fr.facets[0].counts : []; total = fr.count; }
+    const months = new Array(12).fill(0); for (const f of facet) months[+f.name - 1] = f.count;
+    species[sp.id] = {key: m.usageKey, scope, total, months};
+  }
+  const local = []; let offset = 0, count = Infinity;
+  while (offset < count && offset < 3000){
+    const j = await get(`https://api.gbif.org/v1/occurrence/search?geometry=${encodeURIComponent(GBIF_ZONE)}&kingdomKey=5&hasCoordinate=true&hasGeospatialIssue=false&limit=300&offset=${offset}`);
+    count = j.count;
+    for (const o of j.results) local.push({key:o.key, species:o.species || o.scientificName, genus:o.genus, date:(o.eventDate || '').slice(0, 10), lat:o.decimalLatitude, lng:o.decimalLongitude, unc:o.coordinateUncertaintyInMeters || null, basis:o.basisOfRecord, dataset:o.datasetName || o.institutionCode || ''});
+    offset += j.results.length; if (!j.results.length) break;
+  }
+  const text = JSON.stringify({species, local, localCount: count});
+  await store({id, kind:'gbif', source:'GBIF.org, API occurrences (comprend iNaturalist et les bases naturalistes)', url:'https://api.gbif.org/v1/occurrence/search', stats:{local: local.length, localCount: count}, text, fetched: new Date().toISOString()});
+}
+function loadGbif(){ const rec = S.raw[`gbif-${GRID_KEY}`]; S.gbif = rec ? JSON.parse(rec.text) : null; }
+// ====================== Météo (Météo-France) ======================
+// Pluie et température : modèle AROME haute définition de Météo-France (mailles de 1,5 km, via Open-Meteo, modèle
+// « arome_france_hd »), interrogé sur une grille de points tous les 0,03° de latitude et 0,04° de longitude (environ 3 km)
+// couvrant la zone. Chaque jour reçu est conservé : l’historique s’allonge à chaque ouverture.
+// Au-delà de l’horizon d’AROME (2 jours), prévision plus grossière sur 9 points : ARPEGE (Météo-France, 11 km) jusqu’à 4 jours,
+// puis prévision multimodèle d’Open-Meteo jusqu’à J+15. Chaque jour affiche sa source.
+// Température de chaque maille de 10 m : valeur du modèle ramenée à l’altitude IGN de la maille avec −6,5 °C par 1 000 m.
+// Humidité des sols Météo-France SIM et pluie SAFRAN : affichées pour comparaison, elles n’entrent pas dans le calcul
+// (aucune formule publiée ne relie l’humidité du sol à la pousse).
+const DAILY = 'precipitation_sum,temperature_2m_mean,temperature_2m_max';
+const G_DLAT = 0.03, G_DLON = 0.04;
+const G_LATS = [], G_LONS = [];
+for (let la = LL_SW[0] - 0.01; la <= LL_NE[0] + 0.01 + 1e-9; la += G_DLAT) G_LATS.push(+la.toFixed(3));
+for (let lo = LL_SW[1] - 0.01; lo <= LL_NE[1] + 0.01 + 1e-9; lo += G_DLON) G_LONS.push(+lo.toFixed(3));
+const G_PTS = G_LATS.flatMap(la => G_LONS.map(lo => [la, lo]));
+const C_PTS = [CENTER.lat - 0.14, CENTER.lat, CENTER.lat + 0.14].flatMap(la => [CENTER.lon - 0.2, CENTER.lon, CENTER.lon + 0.2].map(lo => [+la.toFixed(3), +lo.toFixed(3)]));
+// Attention : les champs « lat » et « lon » publiés avec SIM sont faux (décalés de 0,1 à 0,4° et pas de grille de 5 km au lieu de 8 km,
+// vérifié le 2 novembre 2026 à Dunkerque, Paris, en Bretagne, en Creuse et à Marseille). La position est donc tirée de la géométrie (Lambert 93).
+const SIM_BBOX = [CENTER.lat - 0.25, CENTER.lon - 0.35, CENTER.lat + 0.25, CENTER.lon + 0.35].map(v => v.toFixed(3)).join(',');
+const simUrl = () => `https://geobretagne.fr/geoserver/dreal_b/wfs?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=dreal_b:qry_sorties_sim&BBOX=${SIM_BBOX},urn:ogc:def:crs:EPSG::4326&COUNT=5000&OUTPUTFORMAT=application/json&PROPERTYNAME=geometry,id_maille_historique,date,swi_courant,swi_moyen,anomalie_swi,cumul_precipitations_15j`;
+function l93ToWgs(X, Y){ // Lambert 93 vers WGS84 (formules IGN, ellipsoïde GRS80)
+  const n = 0.7256077650532670, C = 11754255.426096, Xs = 700000, Ys = 12655612.049876, e = 0.0818191910428158;
+  const Rr = Math.hypot(X - Xs, Y - Ys), g = Math.atan((X - Xs) / (Ys - Y)), lon = 3 * Math.PI / 180 + g / n, Lr = -Math.log(Rr / C) / n;
+  let phi = 2 * Math.atan(Math.exp(Lr)) - Math.PI / 2;
+  for (let i = 0; i < 10; i++) phi = 2 * Math.atan(Math.pow((1 + e * Math.sin(phi)) / (1 - e * Math.sin(phi)), e / 2) * Math.exp(Lr)) - Math.PI / 2;
+  return [phi * 180 / Math.PI, lon * 180 / Math.PI];
+}
+function geomCenter(g){ let c = g.coordinates; while (Array.isArray(c[0][0])) c = c[0]; let x = 0, y = 0, n = 0;
+  for (let k = 0; k < c.length - 1; k++){ x += c[k][0]; y += c[k][1]; n++; } return l93ToWgs(x / n, y / n); }
+
+const getJSON = async (u, n) => JSON.parse(new TextDecoder().decode(await fetchChecked(u, 'json', n)));
+async function refreshMeteo(force){
+  const today = todayISO(), hId = `aromehist-${GRID_KEY}`, fId = `meteofc-${GRID_KEY}`, simId = `simhist2-${GRID_KEY}`, notes = [];
+  const hist = S.raw[hId] ? JSON.parse(S.raw[hId].text) : {pts: G_PTS.map(p => ({lat: p[0], lon: p[1], elev: null, d: {}}))};
+  const haveFc = S.raw[fId];
+  if (!force && haveFc && haveFc.day === today && S.raw[hId] && S.raw[hId].day === today) return notes;
+  // 1. AROME HD sur la grille fine : 45 jours la première fois, puis seulement les jours manquants
+  const lastDay = S.raw[hId] ? S.raw[hId].day : null;
+  const past = lastDay ? clamp(Math.round((Date.parse(today) - Date.parse(lastDay)) / 864e5) + 3, 3, 45) : 45;
+  let aromeOk = true;
+  for (let b = 0; b < G_PTS.length; b += 60){
+    const chunk = G_PTS.slice(b, b + 60);
+    status(`Météo-France AROME 1,5 km : points ${b + 1} à ${b + chunk.length} sur ${G_PTS.length}…`);
+    try {
+      const u = `https://api.open-meteo.com/v1/meteofrance?latitude=${chunk.map(p => p[0]).join(',')}&longitude=${chunk.map(p => p[1]).join(',')}&daily=${DAILY}&models=arome_france_hd&past_days=${past}&forecast_days=2&timezone=Europe%2FParis`;
+      let j = await getJSON(u, 3); if (!Array.isArray(j)) j = [j];
+      j.forEach((o, q) => { const P = hist.pts[b + q]; P.elev = o.elevation;
+        o.daily.time.forEach((t, k) => { const pr = o.daily.precipitation_sum[k], tm = o.daily.temperature_2m_mean[k], tx = o.daily.temperature_2m_max[k];
+          if (pr != null && tm != null) P.d[t] = [+pr.toFixed(2), +tm.toFixed(2), tx == null ? null : +tx.toFixed(2)]; }); });
+    } catch (e) { aromeOk = false; notes.push('AROME haute définition indisponible (' + e.message.replace(/^.*: /, '') + ')' + (S.raw[hId] ? ' : jours déjà enregistrés utilisés.' : '.')); break; }
+    if (b + 60 < G_PTS.length) await new Promise(r => setTimeout(r, 1500));
+  }
+  if (aromeOk) await store({id: hId, kind:'meteo', day: aromeOk ? today : (S.raw[hId] && S.raw[hId].day) || null,
+    source:`Météo-France AROME haute définition 1,5 km (Open-Meteo, arome_france_hd), grille de ${G_PTS.length} points`, url:'https://api.open-meteo.com/v1/meteofrance?models=arome_france_hd',
+    stats:{points: G_PTS.length, days: Object.keys(hist.pts[0].d).length}, text: JSON.stringify(hist)});
+  // 2. Prévision au-delà de l’horizon d’AROME : ARPEGE (4 jours) puis multimodèle (16 jours), 9 points
+  const lat = C_PTS.map(p => p[0]).join(','), lon = C_PTS.map(p => p[1]).join(',');
+  let arp = null, gen = null;
+  status('Prévision : ARPEGE et complément multimodèle…');
+  try { arp = await getJSON(`https://api.open-meteo.com/v1/meteofrance?latitude=${lat}&longitude=${lon}&daily=${DAILY}&models=arpege_europe&forecast_days=4&timezone=Europe%2FParis`, 2); } catch (e) { notes.push('ARPEGE indisponible.'); }
+  try { gen = await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=${DAILY}&forecast_days=16&timezone=Europe%2FParis`, 2); } catch (e) { notes.push('Prévision au-delà de 4 jours indisponible.'); }
+  if (arp || gen || !haveFc) await store({id: fId, kind:'meteo', day: today, source:'Prévision au-delà de 2 jours : ARPEGE (Météo-France, 11 km) puis multimodèle Open-Meteo, 9 points', url:'https://api.open-meteo.com', stats:{points: 9}, text: JSON.stringify({arp, gen})});
+  // 3. Humidité des sols et pluie SAFRAN (Météo-France SIM) : information
+  status('Météo-France : humidité des sols (SIM)…');
+  try {
+    const j = await getJSON(simUrl(), 2), prev = S.raw[simId] ? JSON.parse(S.raw[simId].text) : {};
+    for (const f of j.features){ const q = f.properties, d = String(q.date).slice(0, 10);
+      if (q.swi_courant == null || !f.geometry) continue; const [la, lo] = geomCenter(f.geometry);
+      (prev[d] = prev[d] || {})[q.id_maille_historique] = [+la.toFixed(4), +lo.toFixed(4), q.swi_courant, q.swi_moyen, q.anomalie_swi, q.cumul_precipitations_15j]; }
+    const dates = Object.keys(prev).sort(); if (!dates.length) throw new Error('aucune maille reçue');
+    await store({id: simId, kind:'meteo', source:'Météo-France SIM, humidité des sols (SWI, normale 1991-2020) et pluie SAFRAN 15 j, mailles de 8 km (GeoBretagne)', url: simUrl(), stats:{days: dates.length, first: dates[0], last: dates[dates.length - 1]}, text: JSON.stringify(prev)});
+  } catch (e) { notes.push('Humidité des sols Météo-France indisponible (information seulement).'); }
+  if (!S.raw[hId] || !Object.keys(JSON.parse(S.raw[hId].text).pts[0].d).length) throw new Error('aucune donnée AROME reçue');
+  return notes;
+}
+// Champs journaliers sur des blocs de 1 km (33 × 33) : pluie (mm/j) et température ramenée au niveau de la mer (°C)
+function buildMeteo(){
+  const hRec = S.raw[`aromehist-${GRID_KEY}`]; if (!hRec) return null;
+  const hist = JSON.parse(hRec.text), fRec = S.raw[`meteofc-${GRID_KEY}`], fc = fRec ? JSON.parse(fRec.text) : {};
+  const today = todayISO(), days = []; for (let k = -45; k <= 15; k++) days.push(addDays(today, k));
+  const B = 33, bs = N / B, nG = G_LATS.length, mG = G_LONS.length;
+  const blkLL = []; for (let br = 0; br < B; br++) for (let bc = 0; bc < B; bc++) blkLL.push(toLatLng(GRID.x0 + (bc + 0.5) * bs * PX, GRID.y1 - (br + 0.5) * bs * PX));
+  const asArr = (x) => x == null ? null : Array.isArray(x) ? x : [x], ARP = asArr(fc.arp), GEN = asArr(fc.gen);
+  const coarse = (src, iso) => src ? src.map(o => { const k = o.daily.time.indexOf(iso); if (k < 0) return null; const pr = o.daily.precipitation_sum[k], tm = o.daily.temperature_2m_mean[k];
+    return pr == null || tm == null ? null : {lat: o.latitude, lon: o.longitude, elev: o.elevation, p: pr, t: tm, tx: o.daily.temperature_2m_max[k]}; }) : null;
+  const P = [], Ts = [], TX = [], src = [];
+  for (const iso of days){
+    const p = new Float32Array(B * B).fill(NaN), t = new Float32Array(B * B).fill(NaN), tx = new Float32Array(B * B).fill(NaN);
+    const hd = hist.pts.every(q => q.d[iso]);
+    if (hd){
+      for (let b = 0; b < B * B; b++){ const [la, lo] = blkLL[b];
+        const fi = clamp((la - G_LATS[0]) / G_DLAT, 0, nG - 1.001), fj = clamp((lo - G_LONS[0]) / G_DLON, 0, mG - 1.001), i0 = Math.floor(fi), j0 = Math.floor(fj), u = fi - i0, v = fj - j0;
+        let sp = 0, st = 0, sx = 0;
+        for (const [di, dj, w] of [[0, 0, (1 - u) * (1 - v)], [1, 0, u * (1 - v)], [0, 1, (1 - u) * v], [1, 1, u * v]]){
+          const q = hist.pts[(i0 + di) * mG + j0 + dj], d = q.d[iso]; sp += w * d[0]; st += w * (d[1] - LAPSE * q.elev); sx += w * ((d[2] ?? d[1]) - LAPSE * q.elev); }
+        p[b] = sp; t[b] = st; tx[b] = sx; }
+      src.push('AROME 1,5 km');
+    } else {
+      const arpC = iso > today ? coarse(ARP, iso) : null, genC = coarse(GEN, iso);
+      const useArp = arpC && arpC.filter(Boolean).length === 9, c = useArp ? arpC : genC && genC.filter(Boolean).length === 9 ? genC : null;
+      if (c){ for (let b = 0; b < B * B; b++){ const [la, lo] = blkLL[b], kx = Math.cos(la * Math.PI / 180); let sw = 0, sp = 0, st = 0, sx = 0;
+          for (const q of c){ const w = 1 / (((q.lon - lo) * kx) ** 2 + (q.lat - la) ** 2 + 1e-6); sw += w; sp += w * q.p; st += w * (q.t - LAPSE * q.elev); sx += w * ((q.tx ?? q.t) - LAPSE * q.elev); }
+          p[b] = sp / sw; t[b] = st / sw; tx[b] = sx / sw; }
+        src.push(useArp ? 'ARPEGE 11 km' : 'multimodèle');
+      } else src.push('manque');
+    }
+    P.push(p); Ts.push(t); TX.push(tx);
+  }
+  // Fenêtres glissantes du modèle publié : pluie moyenne sur 26 jours, température moyenne sur 20 jours
+  const P26 = [], T20 = [], P14 = [];
+  for (let k = 0; k < days.length; k++){
+    const a = new Float32Array(B * B).fill(NaN), t = new Float32Array(B * B).fill(NaN), a14 = new Float32Array(B * B).fill(NaN);
+    if (k >= 25) for (let b = 0; b < B * B; b++){ let s1 = 0, s2 = 0, s3 = 0, ok = true;
+      for (let j = k - 25; j <= k; j++){ const v = P[j][b]; if (v !== v) { ok = false; break; } s1 += v; if (j > k - 14) s3 += v; }
+      for (let j = k - 19; j <= k && ok; j++){ const v = Ts[j][b]; if (v !== v) { ok = false; break; } s2 += v; }
+      if (ok){ a[b] = s1 / 26; t[b] = s2 / 20; a14[b] = s3; } }
+    P26.push(a); T20.push(t); P14.push(a14);
+  }
+  const sim = S.raw[`simhist2-${GRID_KEY}`] ? JSON.parse(S.raw[`simhist2-${GRID_KEY}`].text) : {};
+  return {today, days, B, bs, P, Ts, TX, P26, T20, P14, src, sim, firstShown: Math.max(25, 0), todayIdx: days.indexOf(today), fetched: hRec.fetched, aromeDays: Object.keys(hist.pts[0].d).length};
+}
+const blockOf = (i) => { const M = S.meteo, r = (i / N) | 0, c = i - r * N; return Math.min(M.B - 1, (r / M.bs) | 0) * M.B + Math.min(M.B - 1, (c / M.bs) | 0); };
+const zOf = (i) => S.layers.dem16[i] === 65535 ? NaN : S.layers.dem16[i] / 10;
+function cepeAt(i, k, D){
+  const M = S.meteo; if (!M) return null; const b = blockOf(i), z = zOf(i);
+  const P26 = M.P26[k][b], T20 = M.T20[k][b] + LAPSE * z;
+  if (P26 !== P26 || T20 !== T20) return null;
+  const r = brejonIndex(T20, P26), dom = brejonDomain(T20, P26, M.days[k]);
+  if (D) Object.assign(D, {P26, T20, ...r, dom, src: M.src[k]});
+  return r.idx;
+}
+// Pour comparaison : humidité des sols SIM et pluie SAFRAN 15 j de la maille de 8 km la plus proche (information)
+function simAt(i, iso){
+  const M = S.meteo; if (!M || !M.sim) return null; const dates = Object.keys(M.sim).sort(); if (!dates.length) return null;
+  const d = M.sim[iso] ? iso : dates[dates.length - 1], r = (i / N) | 0, c = i - r * N, [la, lo] = toLatLng(GRID.x0 + (c + 0.5) * PX, GRID.y1 - (r + 0.5) * PX);
+  let best = null, bd = 1e9; for (const q of Object.values(M.sim[d])){ const dd = Math.hypot((q[0] - la) * 111, (q[1] - lo) * 111 * Math.cos(la * Math.PI / 180)); if (dd < bd) { bd = dd; best = q; } }
+  return best ? {date: d, km: bd, swi: best[2], swiN: best[3], c15: best[5]} : null;
+}
+
+// ====================== Habitat (catégories) ======================
+// 2 = hôte connu, 1 = hôte possible, 0 = pas d’hôte connu. Aucune note intermédiaire.
+function hostCat(sp, i, D){
+  const L = S.layers, fid = L.forestId[i], age = L.age[i], g = S.forestHost[fid];
+  let c = 0, why;
+  if (sp.saprotroph){ const open = (fid && ((S.forestProps[fid].code || '').startsWith('FO') || g === 'lande'));
+    c = open ? 1 : 0; why = open ? 'milieu ouvert (lande, forêt ouverte)' : 'prairies non cartographiées ici'; }
+  else if (fid && age === 3){ c = 0; why = 'coupe ou absence de couvert en 2021-2023'; }
+  else if (fid){ c = sp.known.includes(g) ? 2 : sp.possible.includes(g) ? 1 : 0;
+    why = S.forestProps[fid].essence + (c === 2 ? ' : hôte connu' : c === 1 ? ' : essence non précisée ou hôte moins net' : ' : pas un hôte cité'); }
+  else if (age === 4){ c = sp.known.length || sp.possible.length ? 1 : 0; why = 'boisement récent absent de la BD Forêt, essence inconnue'; }
+  else if (L.dHedge[i] === 0){ c = sp.hedge ? 1 : 0; why = 'haie (essences inconnues ; hôte possible déduit, non cité par la source)'; }
+  else why = 'ni forêt ni haie';
+  if (D) Object.assign(D, {cat: c, why});
+  return c;
+}
+const CAT_NAMES = ['pas d’hôte connu', 'hôte possible', 'hôte connu'];
+
+// ====================== Rendu ======================
+const RAMP = [[255,255,204],[194,230,153],[120,198,121],[49,163,84],[0,104,55]];
+const BREAKS = [0.1, 0.25, 0.5, 0.75];
+const rampColor = (v) => { let k = 0; while (k < BREAKS.length && v >= BREAKS[k]) k++; return RAMP[k]; };
+const seq = (t, a, b) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const FOREST_COLORS = {chene:[140,81,10],hetre:[191,129,45],chataignier:[223,194,125],feuillus:[128,205,193],pins:[1,102,94],epicea:[53,151,143],douglas:[0,60,48],meleze:[90,180,172],coniferes:[40,120,110],mixte:[166,97,26],peuplier:[220,220,120],robinier:[200,160,200],lande:[230,200,230],sans_couvert:[200,200,200],autre:[150,150,150]};
+const AGE_COLORS = [null,[27,94,32],[129,199,132],[230,81,0],[255,213,79],[156,39,176]];
+const LANDFORM_COLORS = [null,[165,0,38],[244,109,67],[254,224,139],[217,239,139],[102,189,99],[26,152,80]];
+const GEOL_COLORS = {acide:[230,120,120],argile:[150,190,240],calcaire:[240,220,140],inconnu:[200,200,200]};
+function geolClass(p){ if (!p) return 'inconnu'; const d = (p.descr || '').toLowerCase();
+  if (/calcaire|craie|dolomie/.test(d)) return 'calcaire'; if (/argile|marne|alluvion|basalte/.test(d)) return 'argile';
+  if (/granite|gneiss|micaschiste|schiste|quartz|grès|sable|rhyolite/.test(d)) return 'acide'; return 'inconnu'; }
+let overlay = null, renderToken = 0;
+
+function render(){
+  if (!S.layers) return;
+  const token = ++renderToken, id = $('layer').value, L = S.layers, NN = N * N, disk = S.disk;
+  const cv = document.createElement('canvas'); cv.width = N; cv.height = N; const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(N, N), px = img.data;
+  const set = (i, c, a = 255) => { const o = i * 4; px[o] = c[0]; px[o+1] = c[1]; px[o+2] = c[2]; px[o+3] = a; };
+  const sp = SPECIES.find(s => s.id === id), k = S.dayIdx;
+  if (sp){
+    const usePousse = S.mode === 'pousse' && S.meteo && sp.model === 'brejon';
+    let outDomain = 0, inHost = 0;
+    for (let i = 0; i < NN; i++){ if (!disk[i]) continue; const cat = hostCat(sp, i); if (!cat) continue;
+      const fh = humidFactor(i) ?? 0.75;
+      if (!usePousse){ set(i, seq((fh - 0.5) * 2, [199,233,192], [0,90,30]), cat === 2 ? 255 : 150); continue; }
+      const D = {}; const v = cepeAt(i, k, D); if (v === null) continue; inHost++;
+      if (D.dom.length){ outDomain++; set(i, [170,170,170], cat === 2 ? 255 : 140); continue; }
+      set(i, rampColor(v * fh), cat === 2 ? 255 : 140); }
+    S.lastRender = {outDomain, inHost};
+  } else {
+    for (let i = 0; i < NN; i++){
+      if (!disk[i]) continue; let c = null;
+      switch (id){
+        case '_dem': if (L.dem16[i] !== 65535) c = seq(clamp((L.dem16[i] / 10 - 350) / 300, 0, 1), [247,252,245], [0,68,27]); break;
+        case '_slope': if (L.slope8[i] !== 255) c = seq(clamp(L.slope8[i] / 2 / 30, 0, 1), [255,245,220], [200,30,10]); break;
+        case '_aspect': { const a = L.aspect8[i]; if (a === 254) c = [235,235,235]; else if (a !== 255){ const t = (Math.cos(a * 2 * Math.PI / 180) + 1) / 2; c = seq(t, [230,120,40], [40,90,200]); } break; }
+        case '_landform': c = LANDFORM_COLORS[L.landform[i]]; break;
+        case '_twi': if (L.twi8[i] !== 255) c = seq(clamp((L.twi8[i] / 10 - 4) / 10, 0, 1), [245,245,255], [20,80,220]); break;
+        case '_hli': c = seq(clamp((L.hli8[i] / 200 - 0.5) / 0.5, 0, 1), [40,90,200], [230,80,30]); break;
+        case '_sunA': case '_sunS': case '_sunO': { const v = L[id === '_sunA' ? 'sunA' : id === '_sunS' ? 'sunS' : 'sunO'][i]; c = seq(clamp((v - 40) / 100, 0, 1), [30,30,90], [255,220,60]); break; }
+        case '_basin': { const b = L.basin[i]; if (b) { const h = (b * 2654435761) >>> 0; c = [80 + (h & 127), 80 + ((h >> 8) & 127), 80 + ((h >> 16) & 127)]; } break; }
+        case '_water': c = seq(clamp(L.dWater[i] / 50, 0, 1), [8,81,156], [240,240,240]); break;
+        case '_forest': { const f = L.forestId[i]; if (f) c = FOREST_COLORS[S.forestHost[f]] || FOREST_COLORS.autre; break; }
+        case '_age': c = AGE_COLORS[L.age[i]]; break;
+        case '_edge': if (L.forestId[i]) c = seq(clamp(L.dEdge[i] / 20, 0, 1), [255,200,0], [20,90,40]); break;
+        case '_fp': if (S.fp && S.fp[i] <= 7) c = FP_COLORS[S.fp[i]]; break;
+        case '_hedge': if (L.dHedge[i] <= 2) c = L.dHedge[i] === 0 ? [56,118,29] : [170,210,140]; break;
+        case '_ph': { const v = soilAt('ph', i); if (v === v) c = seq(clamp((v - 4.5) / 2.5, 0, 1), [215,48,39], [69,117,180]); break; }
+        case '_clay': { const v = soilAt('clay', i); if (v === v) c = seq(clamp((v - 10) / 20, 0, 1), [255,247,236], [127,39,4]); break; }
+        case '_sand': { const v = soilAt('sand', i); if (v === v) c = seq(clamp((v - 30) / 40, 0, 1), [255,255,229], [204,140,2]); break; }
+        case '_soc': { const v = soilAt('soc', i); if (v === v) c = seq(clamp((v - 20) / 130, 0, 1), [255,255,229], [37,37,37]); break; }
+        case '_geol': c = GEOL_COLORS[geolClass(S.geolProps[L.geolId[i]])]; break;
+        case '_road': c = seq(clamp(L.dRoad[i] / 50, 0, 1), [200,30,30], [245,245,245]); break;
+        case '_track': c = seq(clamp(L.dTrack[i] / 30, 0, 1), [120,60,10], [245,245,245]); break;
+      }
+      if (c) set(i, c);
+    }
+  }
+  if ($('ovBasins').checked){
+    for (let r = 0; r < N - 1; r++) for (let c = 0; c < N - 1; c++){ const i = r * N + c; if (!disk[i]) continue;
+      if (L.basin[i] !== L.basin[i + 1] || L.basin[i] !== L.basin[i + N]) set(i, [30,30,30]); }
+  }
+  ctx.putImageData(img, 0, 0);
+  cv.toBlob(b => { if (token !== renderToken) return; const u = URL.createObjectURL(b);
+    if (overlay){ const old = overlay._url; overlay.setUrl(u); setTimeout(() => URL.revokeObjectURL(old), 2000); }
+    else overlay = L_.imageOverlay(u, BOUNDS, {opacity: +$('opacity').value, interactive: false}).addTo(map);
+  }, 'image/png');
+  renderLegend(id, sp); renderTemoins(); renderTimeline();
+}
+
+function renderLegend(id, sp){
+  const lg = $('legend'), note = $('layerNote'), sw = (c) => `<span class="sw" style="background:rgb(${c.map(Math.round).join(',')})"></span>`;
+  const ramp = (a, b, lo, hi) => lo + ' ' + [0, .5, 1].map(t => sw(seq(t, a, b))).join('') + ' ' + hi;
+  $('dateBox').style.display = sp && S.mode === 'pousse' ? '' : 'none';
+  if (sp){
+    const pousse = S.mode === 'pousse' && sp.model === 'brejon' && S.meteo;
+    const g = S.gbif && S.gbif.species[sp.id];
+    const months = g && g.total >= 30 ? g.months : null, mNames = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+    const season = months ? 'mois d’observation (GBIF, ' + g.scope + ', ' + g.total + ' obs.) : ' + months.map((v, m) => [v, m]).filter(x => x[0] >= Math.max(...months) * 0.25).map(x => mNames[x[1]]).join(', ') : '';
+    if (pousse){
+      lg.innerHTML = ['< 0,1','0,1–0,25','0,25–0,5','0,5–0,75','≥ 0,75'].map((t, k) => sw(RAMP[k]) + t).join(' ') + ' ' + sw([170,170,170]) + 'hors du domaine du modèle';
+      note.innerHTML = 'Note = indice de pousse du cèpe (modèle publié de Brejon Lamartiniere et Hoffman : pluie sur 26 jours, température sur 20 jours) × humidité du relief (de 0,5 pour les endroits les plus secs à 1 pour les plus humides de tes bois ; règle choisie par toi, son ampleur n’est pas établie par une étude). Couleur pleine : hôte connu ; pâle : hôte possible.' +
+        (S.lastRender && S.lastRender.outDomain ? `<br><span class="warn">${Math.round(100 * S.lastRender.outDomain / Math.max(1, S.lastRender.inHost))} % des mailles hors du domaine du modèle à cette date.</span>` : '') +
+        `<br>Hôtes (${sp.hostSrc}).` + (season ? '<br>' + season + '.' : '');
+    } else {
+      lg.innerHTML = 'sec ' + [0, .5, 1].map(t => sw(seq(t, [199,233,192], [0,90,30]))).join('') + ' humide (relief) · couleur pleine : hôte connu ; pâle : hôte possible';
+      note.innerHTML = (S.mode === 'pousse' && sp.model !== 'brejon' ? '<span class="warn">Pas de modèle météo publié pour cette espèce : seul l’habitat est affiché.</span><br>' : S.mode === 'pousse' && !S.meteo ? '<span class="warn">Météo non chargée.</span><br>' : '') +
+        `<i>${sp.latin}</i>. Hôtes (${sp.hostSrc}).` + (sp.saprotroph ? '<br>Les prairies ne sont pas cartographiées ici : seuls les landes et bois ouverts sont marqués.' : '') + (season ? '<br>' + season + '.' : '');
+    }
+  } else {
+    const legends = {
+      _dem: [ramp([247,252,245],[0,68,27],'350 m','650 m'), ''],
+      _slope: [ramp([255,245,220],[200,30,10],'0°','≥ 30°'), ''],
+      _aspect: ['nord ' + sw([40,90,200]) + ' est/ouest ' + sw(seq(.5,[230,120,40],[40,90,200])) + ' sud ' + sw([230,120,40]) + ' plat ' + sw([235,235,235]), ''],
+      _landform: [LANDFORM_NAMES.slice(1).map((n, k) => sw(LANDFORM_COLORS[k + 1]) + n).join(' '), 'Indice de position topographique sur une fenêtre de 610 m (Weiss 2001).'],
+      _twi: [ramp([245,245,255],[20,80,220],'sec','humide'), 'TWI élevé : fond de vallon, bas de pente où l’eau s’accumule.'],
+      _hli: [ramp([40,90,200],[230,80,30],'frais','chaud'), 'Indice de charge thermique (McCune et Keon 2002) : versants sud-ouest pentus les plus chauds.'],
+      _sunA: [ramp([30,30,90],[255,220,60],'ombragé','ensoleillé'), 'Ensoleillement direct potentiel par ciel clair, relatif à un terrain plat ; ombre des collines et des arbres non comptée.'],
+      _basin: ['une couleur par sous-bassin', 'Un sous-bassin par tronçon de ruisseau, réseau défini à partir de 0,25 km² drainés. Sur les plateaux très plats, la limite tracée est approximative (lignes droites).'],
+      _water: [ramp([8,81,156],[240,240,240],'0 m','≥ 500 m'), 'Distance aux cours d’eau et plans d’eau de la BD TOPO.'],
+      _forest: [[...new Set(S.forestHost.filter(Boolean))].map(k => sw(FOREST_COLORS[k] || FOREST_COLORS.autre) + k).join(' '), '« feuillus » = essence non précisée dans la BD Forêt.'],
+      _age: [AGE_NAMES.slice(1).map((n, k) => sw(AGE_COLORS[k + 1]) + n).join('<br>'), 'Croisement BD Forêt V2, carte d’état-major (vers 1850) et masque forêt 2021-2023 ; les écarts de tracé à moins de 30 m d’une lisière sont ignorés. L’âge des arbres lui-même n’est pas publié.'],
+      _edge: [ramp([255,200,0],[20,90,40],'lisière','≥ 200 m'), ''],
+      _hedge: [sw([56,118,29]) + 'haie ' + sw([170,210,140]) + 'à moins de 20 m', 'Seule la maille de 10 m traversée par la haie compte comme hôte possible.'],
+      _fp: [FP_CLASSES.map((n, k) => sw(FP_COLORS[k]) + n).join(' '), S.fp ? 'ForestPaths 2020 (Sentinel-1 et 2, 10 m), version en accès anticipé : « pas encore entièrement validée » selon ses auteurs ; pas de classe châtaignier (compté dans « autres feuillus ») ; les chênes y seraient sous-détectés d’après un contrôle en Bavière (projet pilzbuddy). Information seulement, sans effet sur les notes.' : '<span class="warn">ForestPaths non chargée : relance « Préparer la carte ».</span>'],
+      _ph: [ramp([215,48,39],[69,117,180],'4,5','7'), 'SoilGrids, mailles de 250 m : tendance locale, pas une mesure de ton sol.'],
+      _clay: [ramp([255,247,236],[127,39,4],'10 %','30 %'), 'SoilGrids, 250 m.'], _sand: [ramp([255,255,229],[204,140,2],'30 %','70 %'), 'SoilGrids, 250 m.'],
+      _soc: [ramp([255,255,229],[37,37,37],'20','150 g/kg'), 'SoilGrids, 250 m.'],
+      _geol: [Object.keys(GEOL_COLORS).map(k => sw(GEOL_COLORS[k]) + k).join(' '), 'Carte au 1/1 000 000 : limites imprécises à l’échelle d’un bois.'],
+      _road: [ramp([200,30,30],[245,245,245],'0 m','≥ 500 m'), 'Distance à la route la plus proche (BD TOPO). Information seulement.'],
+      _track: [ramp([120,60,10],[245,245,245],'0 m','≥ 300 m'), ''],
+    };
+    const l = legends[id] || legends[id === '_sunS' || id === '_sunO' ? '_sunA' : ''] || ['', ''];
+    lg.innerHTML = l[0]; note.textContent = l[1];
+  }
+}
+
+// ====================== Frise des conditions ======================
+function renderTimeline(){
+  const cv = $('timeline'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height, M = S.meteo;
+  ctx.clearRect(0, 0, W, H);
+  if (!M || !S.layers) { $('condText').textContent = 'Météo non chargée.'; return; }
+  const i = S.focus != null ? S.focus : (N >> 1) * N + (N >> 1), [la, lo] = (() => { const r = (i / N) | 0, c = i - r * N; return toLatLng(GRID.x0 + (c + 0.5) * PX, GRID.y1 - (r + 0.5) * PX); })();
+  const k0 = M.firstShown, k1 = M.days.length - 1, n = k1 - k0 + 1, X = (k) => 34 + (k - k0) / (n - 1) * (W - 44), Y = (v) => H - 26 - v * (H - 40);
+  const series = []; for (let k = k0; k <= k1; k++){ const D = {}; cepeAt(i, k, D); series.push(D); }
+  ctx.font = '20px system-ui'; ctx.fillStyle = '#5f665f'; ctx.strokeStyle = '#d9dbd4'; ctx.lineWidth = 1;
+  [0, 0.5, 1].forEach(v => { ctx.beginPath(); ctx.moveTo(34, Y(v)); ctx.lineTo(W - 10, Y(v)); ctx.stroke(); ctx.fillText(String(v).replace('.', ','), 2, Y(v) + 7); });
+  const tx = X(M.todayIdx); ctx.strokeStyle = '#1f2420'; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(tx, 10); ctx.lineTo(tx, H - 26); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#1f2420'; ctx.fillText('aujourd’hui', Math.min(tx + 6, W - 110), 26);
+  const sx = X(S.dayIdx); ctx.strokeStyle = '#a8551b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx, 10); ctx.lineTo(sx, H - 26); ctx.stroke();
+  const line = (f, color, w) => { ctx.strokeStyle = color; ctx.lineWidth = w; ctx.beginPath(); let st = false;
+    series.forEach((D, j) => { const v = f(D); if (v == null || v !== v) { st = false; return; } const x = X(k0 + j), y = Y(clamp(v, 0, 1)); if (!st) { ctx.moveTo(x, y); st = true; } else ctx.lineTo(x, y); }); ctx.stroke(); };
+  line(D => D.P26 != null ? D.P26 / 8 : null, '#2b6cb0', 2); line(D => D.T20 != null ? D.T20 / 25 : null, '#c05621', 2); line(D => D.idx, '#2f6b3a', 5);
+  ctx.fillStyle = '#5f665f'; ctx.fillText(frDate(M.days[k0]).replace(/^\S+ /, ''), 34, H - 4); ctx.fillText(frDate(M.days[k1]).replace(/^\S+ /, ''), W - 130, H - 4);
+  const Dt = series[M.todayIdx - k0] || {}, kT = M.todayIdx, b = blockOf(i);
+  // ton seuil « prudent » : ≥ 40 mm sur 14 jours et maxima < 20 °C sur 5 jours passés ou prévus
+  const r14 = M.P14[kT][b], z = zOf(i), txOf = (k) => M.TX[k] ? M.TX[k][b] + LAPSE * z : NaN;
+  const cool = (ks) => ks.every(k => { const v = txOf(k); return v === v && v < 20; });
+  const past5 = [kT - 4, kT - 3, kT - 2, kT - 1, kT], next5 = [kT, kT + 1, kT + 2, kT + 3, kT + 4].filter(k => k < M.days.length);
+  const reached = r14 >= 40 && (cool(past5) || cool(next5)), r14f = M.P14[Math.min(kT + 5, M.days.length - 1)][b];
+  const seuil = reached ? '<span class="ok">atteint</span>' : (r14 >= 30 || (r14f >= 40 && cool(next5))) ? '<span class="warn">en approche</span>' : 'loin du compte';
+  let best = null; for (let k = kT; k < M.days.length; k++){ const D = series[k - k0]; if (D.idx != null && !D.dom.length && (!best || D.idx > best.v)) best = {k, v: D.idx}; }
+  const si = simAt(i, M.days[kT]);
+  $('condText').innerHTML = `<b>Cèpe de Bordeaux</b> au point ${la.toFixed(4)}, ${lo.toFixed(4)} (${fmt(z, 0)} m)${S.focus == null ? ', centre de la zone' : ''}, aujourd’hui :<br>` +
+    `<span style="color:#2f6b3a"><b>indice ${fmt(Dt.idx, 2)}</b></span>${humidFactor(i) !== null && Dt.idx != null ? ` × humidité du relief ${fmt(humidFactor(i), 2)} = <b>note ${fmt(Dt.idx * humidFactor(i), 2)}</b>` : ''} · <span style="color:#2b6cb0">pluie ${fmt(Dt.P26, 2)} mm/j sur 26 j</span> · <span style="color:#c05621">${fmt(Dt.T20, 1)} °C en moyenne sur 20 j</span>` +
+    (Dt.dom && Dt.dom.length ? `<br><span class="warn">${Dt.dom.join(' ; ')}</span>` : '') +
+    (best ? `<br>Meilleur jour prévu d’ici J+15 : ${frDate(M.days[best.k])} (indice ${fmt(best.v, 2)}, ${M.src[best.k]}).` : '') +
+    `<br>Ton seuil « prudent » (≥ 40 mm sur 14 j et maxima &lt; 20 °C) : ${seuil} (${fmt(r14, 0)} mm).` +
+    (si ? `<br><span class="note">Pour comparaison, Météo-France SIM (maille de 8 km à ${fmt(si.km, 1)} km, ${frDate(si.date)}) : pluie SAFRAN ${fmt(si.c15, 0)} mm sur 15 j, humidité du sol ${fmt(si.swi, 2)} pour une normale de ${fmt(si.swiN, 2)}.</span>` : '') +
+    `<br><span class="note">Courbe verte épaisse : indice du modèle publié. Bleu : pluie (échelle 0–8 mm/j). Orange : température (0–25 °C). Trait orange vertical : date de la carte. Clique un point de la carte pour suivre cet endroit. Données : AROME 1,5 km jusqu’à J+1, puis ${M.src.slice(kT + 2).includes('ARPEGE 11 km') ? 'ARPEGE 11 km, ' : ''}multimodèle.</span>`;
+}
+
+// ====================== Carte ======================
+const L_ = window.L;
+const map = L_.map('map', {preferCanvas: true}).setView([CENTER.lat, CENTER.lon], 11);
+const ign = (layer, fmt_) => L_.tileLayer(`https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${layer}&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=${fmt_}`, {maxZoom: 19, maxNativeZoom: 18, attribution: '© IGN Géoplateforme'});
+const basePlan = ign('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png').addTo(map);
+const baseOrtho = ign('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg');
+const baseGeol = L_.tileLayer.wms('https://geoservices.brgm.fr/geologie', {layers: 'SCAN_H_GEOL50', format: 'image/png', attribution: '© BRGM'});
+L_.control.layers({'Plan IGN': basePlan, 'Photos aériennes': baseOrtho, 'Carte géologique 1/50 000 (BRGM)': baseGeol}, {}, {collapsed: true}).addTo(map);
+L_.circle([CENTER.lat, CENTER.lon], {radius: RADIUS_M, color: '#2f6b3a', weight: 1, fill: false, interactive: false}).addTo(map);
+L_.control.scale({imperial: false}).addTo(map);
+const temoinLayer = L_.layerGroup().addTo(map), streamLayer = L_.layerGroup(), publicLayer = L_.layerGroup(), gbifLayer = L_.layerGroup();
+
+function geoToLatLngs(coords, depth){
+  if (depth === 0) { const [lat, lng] = toLatLng(coords[0], coords[1]); return [lat, lng]; }
+  return coords.map(c => geoToLatLngs(c, depth - 1));
+}
+function buildOverlays(){
+  streamLayer.clearLayers(); publicLayer.clearLayers(); gbifLayer.clearLayers();
+  for (const p of vecPages('hydro')) for (const f of JSON.parse(p).features){ const g = f.geometry; if (!g) continue;
+    const lines = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+    for (const l of lines) L_.polyline(geoToLatLngs(l, 1), {color: '#1565c0', weight: f.properties.persistance === 'Permanent' ? 2 : 1, opacity: 0.8, dashArray: f.properties.persistance === 'Intermittent' ? '4 4' : null, interactive: false}).addTo(streamLayer); }
+  for (const p of vecPages('lakes')) for (const f of JSON.parse(p).features){ const g = f.geometry; if (!g) continue;
+    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+    for (const pl of polys) L_.polygon(geoToLatLngs(pl, 2), {color: '#1565c0', weight: 1, fillOpacity: 0.4, interactive: false}).addTo(streamLayer); }
+  S.publicPolys = [];
+  for (const p of vecPages('publicForest')) for (const f of JSON.parse(p).features){ const g = f.geometry; if (!g) continue;
+    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+    for (const pl of polys){ S.publicPolys.push({rings: pl, props: f.properties});
+      L_.polygon(geoToLatLngs(pl, 2), {color: '#6a1b9a', weight: 2, fillOpacity: 0.08}).bindTooltip(`${esc(f.properties.toponyme || 'Forêt publique')} (${esc(f.properties.nature || '')})`).addTo(publicLayer); } }
+  if (S.gbif) for (const o of S.gbif.local){ if (o.lat == null) continue;
+    const edible = EDIBLE_LATIN.has(o.species) || EDIBLE_LATIN.has(o.genus);
+    L_.circleMarker([o.lat, o.lng], {radius: edible ? 7 : 3, color: edible ? '#b71c1c' : '#6d4c41', weight: edible ? 2 : 1, fillColor: edible ? '#ffcdd2' : '#bcaaa4', fillOpacity: 0.9})
+      .bindTooltip(`${esc(o.species)} — ${esc(o.date)}${o.unc ? ' (± ' + Math.round(o.unc) + ' m)' : ''}<br>${esc(o.dataset)}`).addTo(gbifLayer); }
+  syncOverlays();
+}
+function syncOverlays(){
+  [[streamLayer, 'ovStreams'], [publicLayer, 'ovPublic'], [gbifLayer, 'ovGbif']].forEach(([l, id]) => { if ($(id).checked) l.addTo(map); else map.removeLayer(l); });
+}
+function inPublicForest(x, y){
+  for (const p of S.publicPolys || []){ let inside = false;
+    p.rings.forEach((ring, ri) => { let c = false; for (let a = 0, b = ring.length - 1; a < ring.length; b = a++){ const xa = ring[a][0], ya = ring[a][1], xb = ring[b][0], yb = ring[b][1];
+      if ((ya > y) !== (yb > y) && x < (xb - xa) * (y - ya) / (yb - ya) + xa) c = !c; } if (c) inside = ri === 0 ? true : false; });
+    if (inside) return p.props; }
+  return null;
+}
+function cellAt(latlng){ const [x, y] = toMerc(latlng.lat, latlng.lng), c = Math.floor((x - GRID.x0) / PX), r = Math.floor((GRID.y1 - y) / PX);
+  return (c < 0 || r < 0 || c >= N || r >= N) ? -1 : r * N + c; }
+const dirName = (a8) => a8 === 254 ? 'plat' : a8 === 255 ? '—' : ['N','NE','E','SE','S','SO','O','NO'][Math.round(a8 * 2 / 45) % 8];
+
+map.on('click', async (e) => {
+  if (S.addingZone){ S.addingZone = false; map.getContainer().style.cursor = '';
+    const name = (prompt('Nom de la nouvelle zone :', '') || '').replace(/[^\p{L}\p{N} '’-]/gu, '').trim().slice(0, 40);
+    S.goZone(`pt${e.latlng.lat.toFixed(3)}_${e.latlng.lng.toFixed(3)}${name ? '_' + name : ''}`); return; }
+  if (S.addingTemoin){ await addTemoin(e.latlng); return; }
+  if (!S.layers) return;
+  const i = cellAt(e.latlng); if (i < 0) return; const L = S.layers;
+  const fid = L.forestId[i], fp = S.forestProps[fid], gp = S.geolProps[L.geolId[i]], [mx, my] = toMerc(e.latlng.lat, e.latlng.lng), pub = inPublicForest(mx, my);
+  const row = (a, b) => `<tr><td>${a}</td><td>${b}</td></tr>`, dist = (v) => v >= 255 ? '> 2,5 km' : (v * 10) + ' m';
+  let html = `<b>${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}</b>${S.disk[i] ? '' : ' <span class="warn">(hors zone)</span>'}<table>` +
+    row('Altitude', L.dem16[i] === 65535 ? '—' : fmt(L.dem16[i] / 10, 0) + ' m') + row('Pente', fmt(L.slope8[i] / 2, 1) + '°, ' + dirName(L.aspect8[i])) +
+    row('Position', LANDFORM_NAMES[L.landform[i]] + ` (écart ${L.tpi8[i]} m)`) + row('Humidité (TWI)', `${fmt(L.twi8[i] / 10, 1)}, centile ${L.twiP[i] === 255 ? '—' : L.twiP[i]}`) +
+    row('Chaleur du versant', fmt(L.hli8[i] / 200, 2)) + row('Ensoleillement', `août ${L.sunA[i]} %, sept. ${L.sunS[i]} %, oct. ${L.sunO[i]} %`) +
+    row('Eau', dist(L.dWater[i])) + row('Bassin', '#' + L.basin[i]) +
+    row('Peuplement', fp ? `${esc(fp.tfv)} <span class="note">(${esc(fp.code)})</span>` : 'hors BD Forêt') + row('Ancienneté', AGE_NAMES[L.age[i]]) +
+    (S.fp ? row('ForestPaths <span class="note">(non validée)</span>', (S.fp[i] <= 7 ? FP_CLASSES[S.fp[i]] : '—') + (() => { const sh = fpShare(fid); return sh ? '<br><span class="note">dans ce peuplement : ' + sh.map(([j, f]) => FP_CLASSES[j].replace(/ \(.*\)/, '') + ' ' + Math.round(f * 100) + ' %').join(', ') + '</span>' : ''; })()) : '') +
+    row('Lisière', dist(L.dEdge[i])) + row('Haie', dist(L.dHedge[i])) +
+    row('Sol', `pH ${fmt(soilAt('ph', i), 1)}, argile ${fmt(soilAt('clay', i), 0)} %, sable ${fmt(soilAt('sand', i), 0)} %, C ${fmt(soilAt('soc', i), 0)} g/kg`) +
+    row('Géologie', (gp ? esc(gp.descr) : '—') + ' <span class="note">(1/1 M)</span>') + row('Route / chemin', dist(L.dRoad[i]) + ' / ' + dist(L.dTrack[i])) +
+    row('Forêt publique', pub ? esc(pub.toponyme || pub.nature) : 'non') + '</table>';
+  S.focus = i; renderTimeline();
+  if (S.meteo){ const C = {}, v = cepeAt(i, S.dayIdx, C), si = simAt(i, S.meteo.days[S.dayIdx]);
+    html += `<p style="margin:6px 0 2px"><b>Cèpe, modèle publié, le ${frDate(S.meteo.days[S.dayIdx])}</b></p><table>` +
+      (v === null ? row('Indice', 'données insuffisantes') : row('Indice', `<b>${fmt(v, 2)}</b> (probabilité de jour de pousse ${fmt(C.p * 100, 1)} %, référence ${fmt(pRef * 100, 1)} %)`) +
+        row('Humidité du relief', (() => { const f = humidFactor(i); return f === null ? '—' : `centile ${S.layers.twiP[i]} des bois et haies → × ${fmt(f, 2)} ; <b>note ${fmt(v * f, 2)}</b>`; })()) +
+        row('Pluie 26 j', `${fmt(C.P26, 2)} mm/j (${fmt(C.P26 * 26, 0)} mm)`) + row('Température 20 j', `${fmt(C.T20, 1)} °C à ${fmt(zOf(i), 0)} m`) + row('Source', C.src) +
+        (C.dom.length ? row('Attention', '<span class="warn">' + C.dom.join(' ; ') + '</span>') : '')) +
+      (si ? row('SIM (info)', `pluie SAFRAN ${fmt(si.c15, 0)} mm/15 j ; sol ${fmt(si.swi, 2)} / normale ${fmt(si.swiN, 2)} (maille à ${fmt(si.km, 1)} km)`) : '') + '</table>'; }
+  html += `<p style="margin:6px 0 2px">Habitat par espèce :</p><table>` +
+    SPECIES.map(s => { const D = {}; hostCat(s, i, D); return row(s.name, `${CAT_NAMES[D.cat]} <span class="note">(${esc(D.why)})</span>`); }).join('') + '</table>';
+  L_.popup({maxWidth: 360}).setLatLng(e.latlng).setContent(html).openOn(map);
+});
+
+// ====================== Téléphone : position GPS, panneau, hors connexion ======================
+// Position : API de géolocalisation du navigateur (GPS du téléphone), seulement sur demande, jamais enregistrée
+// sauf quand tu ajoutes un coin. La précision annoncée par le téléphone est affichée (cercle).
+let hereMarker = null, hereCircle = null, watchId = null;
+function startLocate(btn){
+  if (!navigator.geolocation){ status('Ce navigateur ne donne pas la position.', 'warn'); return; }
+  if (watchId !== null){ navigator.geolocation.clearWatch(watchId); watchId = null; btn.classList.remove('on'); if (hereMarker){ map.removeLayer(hereMarker); map.removeLayer(hereCircle); hereMarker = hereCircle = null; } S.here = null; return; }
+  btn.classList.add('on'); let first = true;
+  watchId = navigator.geolocation.watchPosition((p) => {
+    const ll = [p.coords.latitude, p.coords.longitude]; S.here = {lat: ll[0], lng: ll[1], acc: p.coords.accuracy, t: Date.now()};
+    if (!hereMarker){ hereCircle = L_.circle(ll, {radius: p.coords.accuracy, color: '#1565c0', weight: 1, fillOpacity: 0.12, interactive: false}).addTo(map);
+      hereMarker = L_.circleMarker(ll, {radius: 7, color: '#fff', weight: 2, fillColor: '#1565c0', fillOpacity: 1}).addTo(map); }
+    else { hereMarker.setLatLng(ll); hereCircle.setLatLng(ll).setRadius(p.coords.accuracy); }
+    if (first){ map.setView(ll, Math.max(map.getZoom(), 15)); first = false; }
+    if ($('hereNote')) $('hereNote').textContent = `Position GPS : précision ± ${Math.round(p.coords.accuracy)} m.`;
+  }, (err) => { status('Position indisponible : ' + (err.code === 1 ? 'autorisation refusée (réglages du navigateur).' : err.message), 'warn'); btn.classList.remove('on'); watchId = null; },
+  {enableHighAccuracy: true, maximumAge: 5000, timeout: 30000});
+}
+const MapButtons = L_.Control.extend({options: {position: 'topleft'}, onAdd(){
+  const d = L_.DomUtil.create('div', 'leaflet-bar'); d.style.border = '0'; d.style.display = 'flex'; d.style.flexDirection = 'column'; d.style.gap = '6px';
+  const mk = (txt, title, fn) => { const b = L_.DomUtil.create('button', 'mapbtn', d); b.textContent = txt; b.title = title; b.setAttribute('aria-label', title); L_.DomEvent.on(b, 'click', (e) => { L_.DomEvent.stop(e); fn(b); }); return b; };
+  mk('◎', 'Ma position GPS', startLocate);
+  mk('☰', 'Afficher ou masquer le panneau', () => { document.body.classList.toggle('mapOnly'); setTimeout(() => map.invalidateSize(), 50); });
+  L_.DomEvent.disableClickPropagation(d); return d; }});
+new MapButtons().addTo(map);
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+// ====================== Coins témoins (journal en ajout seul) ======================
+function uuid(){ return crypto.randomUUID ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }
+async function loadEvents(){ S.events = (await getAll('events')).sort((a, b) => a.at.localeCompare(b.at) || a.eid.localeCompare(b.eid)); replay(); }
+function replay(){ S.temoins = new Map(); for (const ev of S.events){ if (ev.type === 'add') S.temoins.set(ev.uid, {...ev.data, uid: ev.uid, created: ev.at}); else if (ev.type === 'delete') S.temoins.delete(ev.uid); } }
+async function appendEvent(ev){ ev.eid = uuid(); ev.at = new Date().toISOString(); await put('events', ev); S.events.push(ev); replay(); }
+async function addTemoin(latlng, gpsAcc){
+  const species = $('tSpecies').value, result = $('tResult').value === 'none' ? 'none' : 'found', note = $('tNote').value.trim().slice(0, 200), i = cellAt(latlng);
+  if (i < 0 || !S.disk || !S.disk[i]) { status('Ce point est hors de la zone de 15 km : coin non ajouté.', 'warn'); return; }
+  const date = /^\d{4}-\d\d-\d\d$/.test($('tDate').value) && $('tDate').value <= todayISO() ? $('tDate').value : null;
+  await appendEvent({type: 'add', uid: uuid(), data: {species, result, note, date, zone: CENTER.id, lat: +latlng.lat.toFixed(6), lng: +latlng.lng.toFixed(6), ...(gpsAcc ? {gps: true, acc: Math.round(gpsAcc)} : {})}});
+  stopAdding(); renderTemoins(); status('Coin ajouté et enregistré.', 'ok');
+}
+function stopAdding(){ S.addingTemoin = false; $('temoinForm').style.display = 'none'; map.getContainer().style.cursor = ''; }
+async function deleteTemoin(uid){ if (!confirm('Retirer ce coin ? Il restera dans l’historique de la sauvegarde.')) return; await appendEvent({type: 'delete', uid}); renderTemoins(); }
+function renderTemoins(){
+  temoinLayer.clearLayers(); const ul = $('temoins'); ul.innerHTML = ''; let lit = 0, tot = 0;
+  for (const t of S.temoins.values()){
+    const sp = SPECIES.find(s => s.id === t.species); let H = null, P = null;
+    if (S.layers && sp){ const i = cellAt({lat: t.lat, lng: t.lng}); if (i >= 0 && S.disk[i]) { H = hostCat(sp, i);
+      const k = t.date && S.meteo ? S.meteo.days.indexOf(t.date) : -1;
+      if (k >= 0 && sp.model === 'brejon'){ const c = cepeAt(i, k); if (c !== null) P = c * (humidFactor(i) ?? 1); } } }
+    if (H !== null){ tot++; if (H >= 1) lit++; }
+    const cls = H === null ? '' : H === 2 ? 'ok' : H === 1 ? 'warn' : 'bad';
+    const none = t.result === 'none';
+    L_.circleMarker([t.lat, t.lng], {radius: 7, color: '#111', weight: 2, fillColor: none ? '#888' : '#fff', fillOpacity: 1}).bindTooltip(`${sp ? sp.name : 'espèce inconnue'}${none ? ' (rien trouvé)' : ''}${t.note ? ' : ' + esc(t.note) : ''}`).addTo(temoinLayer);
+    const li = document.createElement('li');
+    li.innerHTML = `${sp ? sp.name : 'espèce inconnue'}${none ? ' — rien trouvé' : ''}${t.date ? ' le ' + frDate(t.date) : ''} <span class="${cls}">${H === null ? '(autre zone)' : CAT_NAMES[H]}</span>` +
+      (P !== null ? ` · note ce jour-là ${fmt(P, 2)}` : '') + `${t.note ? ' — ' + esc(t.note) : ''} `;
+    const b = document.createElement('button'); b.textContent = 'retirer'; b.style.padding = '1px 6px'; b.onclick = () => deleteTemoin(t.uid); li.appendChild(b); ul.appendChild(li);
+  }
+  $('temoinSummary').textContent = tot ? `${lit} coin(s) sur ${tot} sur un hôte connu ou possible.` : '';
+  renderValidation();
+}
+
+// ====================== Le modèle face à tes sorties ======================
+// Méthode : aire sous la courbe ROC (AUC), probabilité qu’une sortie avec cèpes ait une note plus haute qu’une sortie sans
+// (Hanley et McNeil 1982, Radiology 143 : 29-36 ; égalités comptées pour moitié), la mesure utilisée pour l’AUC 0,81 refaite ici sur leurs données.
+// 0,5 = pas mieux que le hasard. Intervalle à 95 % par rééchantillonnage (bootstrap percentile, 2000 tirages stratifiés,
+// graine fixe pour que le résultat soit reproductible). Compare l’indice seul et la note (indice × humidité du relief) :
+// c’est le test de ton choix sur l’humidité.
+function aucOf(pos, neg){ let s = 0; for (const a of pos) for (const b of neg) s += a > b ? 1 : a === b ? 0.5 : 0; return s / (pos.length * neg.length); }
+function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function aucCI(pos, neg){
+  const r = rng(12345), B = 2000, v = [], pick = (a) => a[Math.floor(r() * a.length)];
+  for (let b = 0; b < B; b++){ const p = pos.map(() => pick(pos)), n = neg.map(() => pick(neg)); v.push(aucOf(p, n)); }
+  v.sort((x, y) => x - y); return [v[Math.floor(0.025 * B)], v[Math.floor(0.975 * B) - 1]];
+}
+function validationCases(){
+  const out = [], skipped = {noDate: 0, noMeteo: 0, outDomain: 0};
+  const sp = SPECIES.find(s => s.model === 'brejon'); if (!S.layers || !S.meteo || !sp) return {out, skipped};
+  for (const t of S.temoins.values()){
+    if (t.species !== sp.id) continue;
+    if (!t.date){ skipped.noDate++; continue; }
+    const i = cellAt({lat: t.lat, lng: t.lng}), k = S.meteo.days.indexOf(t.date);
+    if (i < 0 || !S.disk[i] || k < 0){ skipped.noMeteo++; continue; }
+    const D = {}, idx = cepeAt(i, k, D); if (idx === null){ skipped.noMeteo++; continue; }
+    if (D.dom && D.dom.length){ skipped.outDomain++; continue; }
+    out.push({found: t.result !== 'none', idx, note: idx * (humidFactor(i) ?? 1)});
+  }
+  return {out, skipped};
+}
+function renderValidation(){
+  const el = $('validation'); if (!el) return;
+  const {out, skipped} = validationCases(), pos = out.filter(c => c.found), neg = out.filter(c => !c.found);
+  const sk = [skipped.noDate && `${skipped.noDate} sans date`, skipped.noMeteo && `${skipped.noMeteo} hors de la période météo disponible`, skipped.outDomain && `${skipped.outDomain} hors du domaine du modèle`].filter(Boolean).join(', ');
+  let h = `<b>Le modèle du cèpe face à tes sorties</b><br>${pos.length} sortie(s) avec cèpes, ${neg.length} sans` + (sk ? ` (non comptées : ${sk})` : '') + '.<br>';
+  if (!pos.length || !neg.length){ el.innerHTML = h + 'Pas encore calculable : il faut au moins une sortie avec cèpes et une sortie sans, datées et dans la période météo disponible. Note aussi les sorties où tu ne trouves rien : ce sont elles qui permettent le test.'; return; }
+  const row = (name, key) => { const P = pos.map(c => c[key]), N = neg.map(c => c[key]), a = aucOf(P, N), [lo, hi] = aucCI(P, N);
+    return `${name} : AUC ${fmt(a, 2)} (intervalle à 95 % : ${fmt(lo, 2)} à ${fmt(hi, 2)})` + (lo > 0.5 ? ' — <span class="ok">mieux que le hasard</span>' : ' — <span class="warn">pas encore distinguable du hasard</span>'); };
+  el.innerHTML = h + row('Indice du modèle seul', 'idx') + '<br>' + row('Note (indice × humidité du relief)', 'note') +
+    '<br>0,5 = hasard, 1 = parfait. Avec peu de sorties, l’intervalle est large : c’est normal, il se resserre à chaque sortie notée.';
+}
+function exportBackup(){
+  const data = {app: 'carte-champignons', format: 1, exported: new Date().toISOString(), codeVersion: CODE_VERSION, events: S.events};
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], {type: 'application/json'}));
+  a.download = `champignons-sauvegarde-${todayISO()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+async function importBackup(file){
+  try {
+    const j = JSON.parse(await file.text());
+    if (j.app !== 'carte-champignons' || !Array.isArray(j.events)) throw new Error('fichier non reconnu');
+    const have = new Set(S.events.map(e => e.eid)); let added = 0;
+    for (const ev of j.events){ if (!ev.eid || !ev.at || !ev.type || have.has(ev.eid)) continue; await put('events', ev); S.events.push(ev); added++; }
+    S.events.sort((a, b) => a.at.localeCompare(b.at) || a.eid.localeCompare(b.eid)); replay(); renderTemoins();
+    status(`Import : ${added} événement(s) ajouté(s), rien d’écrasé.`, 'ok');
+  } catch (e) { status('Import refusé : ' + e.message, 'bad'); }
+}
+
+// ====================== Vérification des nouvelles données publiées ======================
+async function checkAvailability(){
+  const pts = [[-12000, 3000], [8000, -6000], [3000, 9000]];
+  const probe = async (fn) => { for (const [dx, dy] of pts){ try { if (await fn(X0 + dx, Y0 + dy)) return true; } catch {} } return false; };
+  S.checks.v3 = await probe(async (x, y) => { const bb = [x - 500, y - 500, x + 500, y + 500].join(',');
+    const j = await (await fetch(`https://data.geopf.fr/wms-v/ows?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=BETA-IGN_BDFORETV3_TEST&QUERY_LAYERS=BETA-IGN_BDFORETV3_TEST&STYLES=&CRS=EPSG:3857&BBOX=${bb}&WIDTH=101&HEIGHT=101&I=50&J=50&FORMAT=image/png&INFO_FORMAT=application/json&FEATURE_COUNT=1`)).json();
+    return j.features && j.features.length > 0; });
+  S.checks.lidar = await probe(async (x, y) => { const bb = [x - 500, y - 500, x + 500, y + 500].join(',');
+    const a = new Float32Array(await (await fetch(`https://data.geopf.fr/wms-r/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=IGNF_LIDAR-HD_MNH_ELEVATION.ELEVATIONGRIDCOVERAGE.LAMB93&STYLES=&CRS=EPSG:3857&BBOX=${bb}&WIDTH=20&HEIGHT=20&FORMAT=image/x-bil;bits=32`)).arrayBuffer());
+    return a.some(v => v > -1000 && v < 9000); });
+  S.checks.date = todayISO();
+}
+
+// ====================== Panneaux sources et méthode ======================
+function renderSources(){
+  const recs = Object.values(S.raw).filter(r => r.id.includes(GRID_KEY));
+  if (!recs.length){ $('sources').textContent = 'Aucune donnée chargée.'; return; }
+  const ok = (r) => r.verified === undefined ? '' : r.verified ? '<span class="ok">✓ intègre</span>' : '<span class="bad">✗ altérée</span>';
+  const dem = recs.filter(r => r.kind === 'dem');
+  let h = '<table><tr><th>Donnée</th><th>Détail</th></tr>';
+  if (dem.length){ const nod = dem.reduce((s, r) => s + r.stats.nodata, 0);
+    h += `<tr><td>Relief</td><td>IGN RGE ALTI, ${dem.length} dalles, 5 m moyennés à 10 m ; ${fmt(Math.min(...dem.map(r => r.stats.min)), 0)} à ${fmt(Math.max(...dem.map(r => r.stats.max)), 0)} m ; ${nod} cellule(s) sans donnée ; ${dem.every(r => r.verified) ? '<span class="ok">✓ intègres</span>' : '<span class="bad">✗</span>'}<br><span class="note">téléchargé le ${dem[0].fetched.slice(0, 10)}</span></td></tr>`; }
+  for (const r of recs.filter(r => r.kind !== 'dem')){
+    const st = r.stats || {}, detail = st.features != null ? `${st.features} objets${st.announced != null ? ' (' + st.announced + ' annoncés)' : ''}` : st.local != null ? `${st.local} observations de champignons sur la zone` : st.days != null ? `${st.days} jours` : st.points ? `${st.points} points` : st.counts ? `${r.w} × ${r.h} pixels de 10 m ; CRC32 de l’archive contrôlé` : st.bytes ? `${Math.round(st.bytes / 1024)} Ko` : '';
+    h += `<tr><td>${esc(r.source.split(/[,—(]/)[0])}</td><td>${esc(r.source)}<br>${detail} ; ${ok(r)}<br><span class="note">téléchargé le ${r.fetched.slice(0, 10)}</span> <span class="mono">${r.sha256.slice(0, 12)}…</span></td></tr>`;
+  }
+  if (S.derived){ const c = S.derived.counts;
+    h += `<tr><td>Calcul</td><td>version ${S.derived.codeVersion}, le ${S.derived.computed.slice(0, 16).replace('T', ' ')} (${S.derived.seconds} s) ; ${c.basins} sous-bassins ; ${c.hedges} haies, ${c.roads} tronçons de route, ${c.hydro} tronçons de cours d’eau rastérisés</td></tr>`; }
+  if (S.checks.date) h += `<tr><td>Nouveautés</td><td>BD Forêt V3 sur ta zone : ${S.checks.v3 ? '<span class="ok">disponible, à intégrer</span>' : 'pas encore'} ; hauteur des arbres LiDAR HD : ${S.checks.lidar ? '<span class="ok">disponible, à intégrer</span>' : 'pas encore'} (vérifié le ${S.checks.date})</td></tr>`;
+  h += '</table><p class="note">Les données brutes sont gardées telles quelles et vérifiées par empreinte SHA-256 à chaque ouverture ; tout le reste se recalcule à l’identique.</p>';
+  $('sources').innerHTML = h;
+}
+const METHODE = [
+  ['Indice de pousse du cèpe', 'calcul', 'Modèle publié (Brejon Lamartiniere et Hoffman, prépublication bioRxiv non relue par des pairs), coefficients recalculés avec leur code et leurs données ; AUC 0,81 hors échantillon (validation refaite ici, pas dans l’article)', 'Établi dans des hêtraies d’Europe centrale avec une météo en mailles de 11 km ; son usage à 1,5 km et 10 m, et en Creuse, reste à vérifier avec tes coins témoins'],
+  ['Pluie sur 26 jours', 'entrée du modèle', 'Météo-France AROME 1,5 km (grille de 3 km), puis ARPEGE 11 km et multimodèle pour la prévision', 'Modèle météo, pas une mesure ; SAFRAN (pluviomètres, 8 km) affiché pour comparaison'],
+  ['Température sur 20 jours', 'entrée du modèle', 'AROME 1,5 km ramené à l’altitude IGN de chaque maille de 10 m (−6,5 °C/km)', 'Gradient de l’atmosphère standard'],
+  ['Humidité du relief', 'note', 'TWI calculé sur le relief IGN, centile parmi les bois et haies ; facteur de 0,5 (sec) à 1 (humide)', 'Lien humidité–pousse établi ; ampleur choisie par toi (étés secs), à vérifier avec tes coins témoins'],
+  ['Hôte', 'habitat', 'BD Forêt V2, haies, masque forêt 2021-2023 ; hôtes cités par l’article Wikipédia de chaque espèce', 'Deux catégories : connu, possible ; quelques cas déduits, marqués « déduit »'],
+  ['Autres espèces : météo', 'non calculé', '—', 'Aucun modèle météo publié et chiffré trouvé'],
+  ['Humidité du sol (SIM), pH, pente, exposition, ensoleillement, position, bassins, eau, ancienneté, haies, accès', 'affichés', 'SIM, SoilGrids, relief, BD TOPO, état-major', 'Aucun effet chiffré publié : informations, pas de poids'],
+  ['Saison', 'affichée', 'GBIF, observations par mois', 'Information ; le modèle du cèpe ne vaut que d’août à novembre'],
+  ['Observations publiques (GBIF)', 'affichées, sans poids', 'GBIF', 'Montrent surtout où et quand les gens cherchent (biais d’échantillonnage, Phillips et al. 2009, Ecological Applications 19 : 181-197) : jamais utilisées pour noter un coin'],
+  ['Vérification', 'calcul', 'Tes sorties datées, avec et sans cèpes ; AUC et intervalle à 95 % (Hanley et McNeil 1982, bootstrap)', 'Seule mesure de la fiabilité du modèle en Creuse'],
+  ['Phase de lune, réseaux sociaux', 'exclus', '—', 'Lune : aucun effet chiffré publié trouvé ; réseaux : données personnelles'],
+  ['Genres d’arbres ForestPaths 10 m', 'affichés, sans poids', 'De Keersmaecker et al. 2024, Zenodo 10.5281/zenodo.13341104 (v0.0.1, CC BY 4.0)', '« Pas encore entièrement validée » selon ses auteurs ; pas de châtaignier ; chênes sous-détectés selon un contrôle en Bavière'],
+  ['Température du sol, nappes, notes à poids', 'exclus', '—', 'Aucun effet chiffré publié'],
+];
+function renderMethode(){
+  $('methode').innerHTML = '<table><tr><th>Élément</th><th>Rôle</th><th>Source</th><th>Limite</th></tr>' +
+    METHODE.map(m => `<tr><td>${m[0]}</td><td>${m[1]}</td><td>${m[2]}</td><td>${m[3]}</td></tr>`).join('') + '</table>' +
+    '<p>Note du cèpe = indice du modèle publié × humidité du relief. Le seul réglage qui ne vient pas d’une étude est l’ampleur du facteur d’humidité (0,5 à 1), choisie par toi. L’appli indique où chercher, jamais quoi manger.</p>';
+}
+
+// ====================== Calcul ======================
+function runWorker(){
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(new Blob([$('worker-src').textContent], {type: 'text/javascript'})), w = new Worker(url);
+    const demTiles = Object.values(S.raw).filter(r => r.kind === 'dem' && r.id.includes(GRID_KEY)).map(r => ({tx: r.tx, ty: r.ty, buf: r.data.slice(0)}));
+    const vec = {}; for (const v of VECTORS) vec[v.key] = vecPages(v.key);
+    w.onmessage = (e) => { const m = e.data;
+      if (m.type === 'progress'){ status('Calcul : ' + m.step + '…'); setProg(m.frac); }
+      else if (m.type === 'done'){ w.terminate(); URL.revokeObjectURL(url); res(m); }
+      else if (m.type === 'error'){ w.terminate(); rej(new Error(m.message)); } };
+    w.onerror = (e) => { w.terminate(); rej(new Error(e.message || 'erreur du calcul')); };
+    w.postMessage({grid: GRID, opts: WORKER_OPTS, demTiles, vec, geolText: S.raw[`geol-${GRID_KEY}`].text}, demTiles.map(t => t.buf));
+  });
+}
+async function compute(force){
+  const inputs = habitatInputs(), did = `derived-${GRID_KEY}`;
+  if (!force){ const d = await getOne('derived', did); if (d && d.inputs === inputs && d.codeVersion === CALC_VERSION) { useDerived(d); return 'cache'; } }
+  const t0 = performance.now(), m = await runWorker();
+  const d = {id: did, inputs, codeVersion: CALC_VERSION, computed: new Date().toISOString(), seconds: Math.round((performance.now() - t0) / 100) / 10, counts: m.counts, forestProps: m.forestProps, geolProps: m.geolProps, layers: m.layers};
+  status('Enregistrement des couches calculées…'); await put('derived', d); useDerived(d); return 'calcul';
+}
+function useDerived(d){
+  S.derived = d; S.layers = d.layers; S.forestProps = d.forestProps; S.geolProps = d.geolProps; S.forestHost = d.forestProps.map(hostGroup);
+  const disk = new Uint8Array(N * N);
+  for (let r = 0; r < N; r++){ const y = GRID.y1 - (r + 0.5) * PX, k = Math.cos(Math.atan(Math.sinh(y / R)));
+    for (let c = 0; c < N; c++){ const x = GRID.x0 + (c + 0.5) * PX; if (Math.hypot((x - X0) * k, (y - Y0) * k) <= RADIUS_M) disk[r * N + c] = 1; } }
+  S.disk = disk;
+}
+function setupDates(){
+  const M = S.meteo, sl = $('dateSlider');
+  if (!M){ sl.disabled = true; $('dateLabel').textContent = '—'; return; }
+  sl.min = M.firstShown; sl.max = M.days.length - 1; sl.disabled = false;
+  if (!(S.dayIdx >= M.firstShown && S.dayIdx < M.days.length)) S.dayIdx = M.todayIdx;
+  sl.value = S.dayIdx; updateDateLabel();
+}
+function updateDateLabel(){ const M = S.meteo; if (!M) return; const d = M.days[S.dayIdx], k = S.dayIdx - M.todayIdx;
+  $('dateLabel').textContent = frDate(d) + (k === 0 ? ' (aujourd’hui)' : k > 0 ? ` (prévision J+${k})` : ` (il y a ${-k} j)`); }
+
+async function loadMeteo(force){
+  try { S.meteoNotes = await refreshMeteo(force); await verifyRaw(); S.meteo = buildMeteo(); setupDates(); return true; }
+  catch (e) { console.error(e); S.meteoErr = e.message; try { S.meteo = S.meteo || buildMeteo(); } catch { S.meteo = null; } setupDates();
+    status('Météo indisponible : ' + e.message + (S.meteo ? '\nDernière météo enregistrée utilisée.' : '\nLa carte d’habitat reste utilisable ; réessaie « Mettre à jour la météo » plus tard.'), 'warn'); return false; }
+}
+const meteoNoteText = () => (S.meteoNotes && S.meteoNotes.length) ? '\n' + S.meteoNotes.join('\n') : '';
+async function prepare(force){
+  ['btnPrepare','btnRecalc','btnMeteo'].forEach(b => $(b).disabled = true);
+  try {
+    await downloadAll();
+    let bad = await verifyRaw();
+    if (bad.length){ for (const id of bad){ await del('raw', id); delete S.raw[id]; }
+      status(`Empreinte incorrecte pour ${bad.length} fichier(s) : retéléchargement…`, 'warn'); await downloadAll(); bad = await verifyRaw();
+      if (bad.length) throw new Error('données toujours altérées après retéléchargement : ' + bad.join(', ')); }
+    try { S.soil = await loadSoils(); } catch (e) { S.soil = null; (S.warnings = S.warnings || []).push('Sol illisible (' + e.message + ') : facteur neutre.'); }
+    loadGbif();
+    const how = await compute(force);
+    try { S.fp = loadForestPaths(); } catch (e) { S.fp = null; (S.warnings = S.warnings || []).push('ForestPaths illisible (' + e.message + ').'); }
+    const meteoOk = await loadMeteo(false);
+    try { await checkAvailability(); } catch {}
+    $('layer').disabled = false; $('btnAddTemoin').disabled = false;
+    buildOverlays(); render(); renderSources();
+    const warn = (S.warnings && S.warnings.length) || (S.meteoNotes && S.meteoNotes.length);
+    if (!meteoOk) status('Carte prête, mais météo indisponible : ' + (S.meteoErr || '') + (S.meteo ? '\nDernière météo enregistrée utilisée.' : '\nL’habitat reste affiché ; réessaie « Mettre à jour la météo » plus tard.'), 'warn');
+    if (meteoOk) status((how === 'cache' ? 'Carte prête (calcul repris du cache, données vérifiées).' : `Carte prête : calcul terminé en ${S.derived.seconds} s.`) + ' Météo à jour.' + (S.warnings && S.warnings.length ? '\n' + S.warnings.join('\n') : '') + meteoNoteText(), warn ? 'warn' : 'ok');
+    setProg(1);
+  } catch (e) {
+    console.error(e);
+    const net = /Failed to fetch|NetworkError|Load failed/i.test(e.message);
+    status('Erreur : ' + e.message + (net ? '\nLe navigateur n’a pas pu joindre le serveur. ' + (inPreview() ? 'Cette page est ouverte dans un aperçu qui bloque Internet : enregistre le fichier, puis ouvre-le avec Chrome ou Edge.' : 'Vérifie la connexion, puis désactive un éventuel bloqueur de publicité pour cette page.') : '') + '\nRien n’a été perdu : relance « Préparer la carte ».', 'bad');
+  } finally { ['btnPrepare','btnRecalc','btnMeteo'].forEach(b => $(b).disabled = false); if (!S.layers) { $('btnRecalc').disabled = true; $('btnMeteo').disabled = true; } renderSources(); }
+}
+
+function inPreview(){ let framed = false; try { framed = window.top !== window.self; } catch { framed = true; } return framed || !/^(file|https?):$/.test(location.protocol); }
+async function init(){
+  renderMethode();
+  $('zoneName').textContent = CENTER.name;
+  const zs = $('zoneSel'); for (const [k, z] of Object.entries(ZONES)) zs.add(new Option(z.name, k));
+  if (!ZONES[CENTER.id]) zs.add(new Option(CENTER.name, CENTER.id));
+  zs.value = CENTER.id;
+  const goZone = (id) => { try { localStorage.setItem('zone', id); } catch {} location.hash = 'zone=' + encodeURIComponent(id); location.reload(); };
+  zs.onchange = () => goZone(zs.value);
+  $('btnZoneHere').onclick = () => { S.addingZone = true; map.getContainer().style.cursor = 'crosshair'; status('Clique sur la carte au centre de la nouvelle zone de 15 km.'); };
+  S.goZone = goZone;
+  const sel = $('layer'), og0 = document.createElement('optgroup'); og0.label = 'Espèces';
+  for (const s of SPECIES){ og0.appendChild(new Option(s.name, s.id)); $('tSpecies').add(new Option(s.name, s.id)); }
+  sel.appendChild(og0);
+  for (const [label, items] of LAYER_GROUPS){ const og = document.createElement('optgroup'); og.label = label; for (const [v, t] of items) og.appendChild(new Option(t, v)); sel.appendChild(og); }
+  const mo = new Option('Morilles (non modélisées : hôtes non cartographiés)', '_none'); mo.disabled = true; sel.add(mo);
+  sel.onchange = render;
+  $('modeSeg').querySelectorAll('button').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; $('modeSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); render(); });
+  let t = null; $('dateSlider').oninput = () => { S.dayIdx = +$('dateSlider').value; updateDateLabel(); clearTimeout(t); t = setTimeout(render, 150); };
+  $('opacity').oninput = () => overlay && overlay.setOpacity(+$('opacity').value);
+  $('ovBasins').onchange = render; ['ovStreams','ovPublic','ovGbif'].forEach(id => $(id).onchange = syncOverlays);
+  $('btnPrepare').onclick = () => prepare(false);
+  $('btnRecalc').onclick = () => prepare(true);
+  $('btnMeteo').onclick = async () => { $('btnMeteo').disabled = true; status('Mise à jour de la météo…'); const ok = await loadMeteo(true); render(); renderSources(); if (ok) status('Météo à jour.' + meteoNoteText(), S.meteoNotes && S.meteoNotes.length ? 'warn' : 'ok'); $('btnMeteo').disabled = false; };
+  $('btnAddTemoin').onclick = () => { $('tDate').value = todayISO(); S.addingTemoin = true; $('temoinForm').style.display = 'block'; map.getContainer().style.cursor = 'crosshair'; };
+  $('btnCancelTemoin').onclick = stopAdding;
+  $('btnTemoinHere').onclick = async () => { if (!S.here || Date.now() - S.here.t > 60000){ status('Active d’abord ta position avec le bouton ◎ de la carte, puis attends qu’elle s’affiche.', 'warn'); return; } await addTemoin(L_.latLng(S.here.lat, S.here.lng), S.here.acc); };
+  $('btnExport').onclick = exportBackup;
+  $('btnImport').onclick = () => $('fileImport').click();
+  $('fileImport').onchange = (e) => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ''; };
+  try {
+    S.db = await openDB();
+    if (navigator.storage && navigator.storage.persist) { try { S.persisted = await navigator.storage.persist(); } catch {} }
+    for (const r of await getAll('raw')){ if (r.id.startsWith('simhist-')) { await del('raw', r.id); continue; } S.raw[r.id] = r; } // ancien format SIM (positions erronées)
+    await loadEvents(); renderTemoins();
+    $('btnPrepare').disabled = false;
+    if (rawComplete()) { status('Données en cache : vérification…'); await prepare(false); }
+    else status('Première ouverture : clique sur « Préparer la carte ». Environ 290 Mo à télécharger (IGN, BRGM, SoilGrids, ForestPaths, GBIF, Météo-France), puis deux à trois minutes de calcul.' + (S.persisted === false ? '\nStockage non garanti par le navigateur : pense à exporter tes sauvegardes.' : ''));
+    if (inPreview() && !S.layers) status('Cette page semble ouverte dans un aperçu, qui bloque l’accès à Internet. Enregistre le fichier, puis ouvre-le avec Chrome ou Edge (double-clic ou glisser dans la fenêtre).', 'warn');
+  } catch (e) { status('Stockage local indisponible : ' + e.message, 'bad'); }
+}
+init();
+</script>
+</body>
+</html>
